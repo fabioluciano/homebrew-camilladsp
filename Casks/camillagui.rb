@@ -19,18 +19,21 @@ cask "camillagui" do
   depends_on :macos
 
   binary "camillagui_backend/camillagui_backend", target: "camillagui"
+  service do
+    run [opt_bin/"camillagui", "--port", "5005"]
+    keep_alive true
+    log_path var/"log/camillagui.log"
+    error_log_path var/"log/camillagui.error.log"
+    environment_variables CAMILLAGUI_PORT: "5005"
+  end
 
   caveats <<~EOS
-    CamillaGUI is not a Homebrew service. Run it manually:
+    camillagui is now a Homebrew service. Run it with:
+      brew services start fabioluciano/camilladsp/camillagui
+    Then open: http://localhost:5005/gui/index.html
 
-      camillagui &
-
-    Then open:
-      http://localhost:5005/gui/index.html
-
-    To uninstall, stop any running `camillagui` process and run
-    `brew uninstall --cask camillagui`. Do NOT use
-    `brew bundle cleanup --force`; cleanup in this tap means only stopping
-    and uninstalling the camilladsp launchd service.
+    Logs: #{var}/log/camillagui.log
+    To uninstall, run `brew services stop fabioluciano/camilladsp/camillagui && brew uninstall --cask camillagui`.
+    Do NOT use `brew bundle cleanup --force`; cleanup means only stopping and uninstalling services.
   EOS
 end

@@ -56,21 +56,31 @@ class CamilladspController < Formula
     SH
   end
 
+  service do
+    run [
+      opt_bin/"camilladsp-controller",
+      "-p", "1234",
+      "-a", "#{var}/camilladsp-controller/config.yml"
+    ]
+    keep_alive true
+    log_path var/"log/camilladsp-controller.log"
+    error_log_path var/"log/camilladsp-controller.error.log"
+    working_dir "#{var}/camilladsp-controller"
+    environment_variables CAMILLADSP_PORT: "1234"
+  end
+
   def caveats
     <<~EOS
-      Required flags:
-        -p <port>           WebSocket port (matches camilladsp -p)
-        -s <template> OR -a <config>   Specific-config or adaptive-config provider
+      camilladsp-controller is now a Homebrew service. To enable it:
+        1. Drop your controller config at #{var}/camilladsp-controller/config.yml
+        2. brew services start fabioluciano/camilladsp/camilladsp-controller
 
-      Optional flag:
-        -d <device>         Enable CoreAudio device listener on macOS (auto-switches on samplerate changes)
+      Required flags (already wired by the service stanza):
+        -p 1234   WebSocket port (matches camilladsp -p 1234)
+        -a PATH   Single-config mode pointing at the above YAML
 
-      Example:
-        camilladsp-controller -p 1234 -s "$HOME/.config/camilladsp/configs/config_{samplerate}.yml" -d "BlackHole 2ch"
-
-      The macOS CoreAudio listener uses a small CFFI binding to CoreAudio that
-      is built when the formula is installed. The Xcode Command Line Tools
-      (required by Homebrew) provide the compiler.
+      The macOS CoreAudio listener uses a small CFFI binding built at install.
+      Xcode Command Line Tools are required.
     EOS
   end
 
