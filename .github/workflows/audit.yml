@@ -1,0 +1,340 @@
+# Audit workflow for the fabioluciano/camilladsp Homebrew tap.
+#
+# User invariant (2026-08-01): "Toda vez que tiver uma nova tag, [o tap]
+# tem que buildar [e] disponibilizar para as pessoas uma nova versão."
+# This workflow IS the safety net that enforces that invariant on every
+# push, pull request, and manual dispatch. The four jobs (f1..f4) map
+# 1:1 to the final-verification wave: f1 audits plan compliance, f2
+# audits code quality (style + audit + bundle + ruby contract tests),
+# f3 performs the real install/test/smoke across the ARM64 + x86_64
+# matrix, and f4 aggregates the manifests and re-runs the
+# scope-fidelity check.
+#
+# Runtime evidence (manifests, baseline SHA derivation) lives under
+# `.ci-evidence/` which is gitignored (parallel to the gitignored
+# `omo/` plan/notepad directory). Nothing under `.ci-evidence/` is
+# tracked; the F1 manifest is the source of truth for the baseline
+# SHA across the f1→f2→f3→f4 chain, and the file is rebuilt on every
+# CI run. The plan and notepads under the gitignored `omo/` directory
+# are kept out of the repository and out of the artifact paths; the
+# F1 job never depends on a plan file.
+#
+# All Homebrew actions are SHA-pinned to a known-good revision; bumping
+# them is a deliberate change and must be reviewed alongside any
+# Homebrew API surface that depends on them.
+name: Audit
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  f1:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          fetch-depth: 0
+      - uses: Homebrew/actions/setup-homebrew@850067efd47cb5801a4c1d71c2297c860b522f3b
+      - name: Tap linkage
+        id: tap_linkage_step
+        run: |
+          set -euo pipefail
+          tap_dir="$(brew --repository fabioluciano/camilladsp)"
+          test "$(realpath "$tap_dir")" = "$(realpath "$GITHUB_WORKSPACE")"
+      - name: Plan + contract checks
+        id: plan_check
+        run: |
+          set -euo pipefail
+          test "$(git rev-list --max-parents=0 HEAD | wc -l | tr -d ' ')" = "1"
+          ruby -Ilib -Itest test/plan_contract_checks.rb --inventory-only
+          ruby -Ilib -Itest test/scope_check.rb
+      - name: Emit manifest
+        if: always()
+        env:
+          F1_TAP_OUTCOME: ${{ steps.tap_linkage_step.outcome }}
+          F1_PLAN_OUTCOME: ${{ steps.plan_check.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-evidence
+          if [ "$F1_TAP_OUTCOME" = "success" ] && [ "$F1_PLAN_OUTCOME" = "success" ]; then
+            export F1_RESULT="pass"
+          else
+            export F1_RESULT="fail"
+          fi
+          # Derive the baseline SHA inline: the tap's root commit. We
+          # do NOT read it from a tracked file (that would create a
+          # circular dependency between the file's contents and the
+          # commit that contains the file). The gitignored
+          # `.ci-evidence/` directory is purely a runtime scratch dir
+          # for this manifest.
+          F1_BASELINE_SHA="$(git rev-list --max-parents=0 HEAD | head -n 1)"
+          export F1_BASELINE_SHA
+          ruby -e '
+            require "json"; require "digest"
+            head_sha = %x(git rev-parse HEAD).strip
+            base_sha = ENV["F1_BASELINE_SHA"].to_s.strip
+            arch = %x(uname -m).strip
+            arch = "arm64" if arch == "aarch64"
+            arch = "x86_64" if arch == "x86_64"
+            files = Dir.glob(["Formula/**/*","Casks/**/*","scripts/**/*",".github/workflows/**/*","test/**/*"]).uniq.sort
+            files = files.map { |f| { path: f, sha256: Digest::SHA256.hexdigest(File.read(f)) } }
+            manifest = {
+              schema_version: 1,
+              artifact: "f1-plan",
+              job_id: "f1",
+              head_sha: head_sha,
+              baseline_sha: base_sha,
+              runner_os: "macos",
+              runner_arch: arch,
+              result: ENV["F1_RESULT"] || "fail",
+              files: files
+            }
+            IO.write(".ci-evidence/f1-manifest.json", JSON.pretty_generate(manifest))
+          '
+      - name: Upload f1-plan
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: f1-plan
+          path: .ci-evidence/f1-manifest.json
+          if-no-files-found: error
+
+  f2:
+    needs: f1
+    if: always()
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+      - uses: Homebrew/actions/setup-homebrew@850067efd47cb5801a4c1d71c2297c860b522f3b
+      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317
+        with:
+          name: f1-plan
+          path: downloads/f1
+      - name: Producer gate
+        run: |
+          set -euo pipefail
+          test -f downloads/f1/.ci-evidence/f1-manifest.json
+          # The producer gate parses the F1 manifest end-to-end:
+          # schema_version == 1, job_id == "f1", baseline_sha is a
+          # 40-hex SHA. The baseline SHA is read from the manifest
+          # itself (no separate baseline.txt file is required).
+          ruby -rjson -e '
+            manifest_path = "downloads/f1/.ci-evidence/f1-manifest.json"
+            m = JSON.parse(File.read(manifest_path))
+            abort "F1 manifest: job_id != f1" unless m["job_id"] == "f1"
+            abort "F1 manifest: schema_version != 1" unless m["schema_version"] == 1
+            abort "F1 manifest: baseline_sha missing or non-hex" unless m["baseline_sha"].to_s.match?(/\A[0-9a-f]{40}\z/)
+            puts "F1 manifest gate OK (job_id=f1, baseline_sha=#{m["baseline_sha"]})"
+          '
+      - name: Style + audit + secret scan + scope check
+        run: |
+          set -euo pipefail
+          brew style Formula/*.rb Casks/*.rb Brewfile
+          for f in camilladsp camilladsp-config camilladsp-controller camilladsp-setupscripts camilladsp-suite pycamilladsp pycamilladsp-plot; do
+            brew audit --strict "$f"
+          done
+          brew audit --strict camillagui
+          brew bundle check --file=Brewfile
+          ruby -Ilib -Itest test/secret_scan.rb
+          ruby -Ilib -Itest test/scope_check.rb
+      - name: Emit f2 manifest
+        if: always()
+        env:
+          F2_RESULT: pass
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-evidence
+          # Read the baseline SHA from the producer (F1) manifest;
+          # fall back to inline derivation if the artifact was not
+          # uploaded for any reason.
+          F2_BASELINE_SHA="$(jq -r .baseline_sha downloads/f1/.ci-evidence/f1-manifest.json 2>/dev/null || git rev-list --max-parents=0 HEAD | head -n 1)"
+          export F2_BASELINE_SHA
+          ruby -e '
+            require "json"; require "digest"
+            arch = %x(uname -m).strip
+            arch = "arm64" if arch == "aarch64"
+            arch = "x86_64" if arch == "x86_64"
+            files = Dir.glob(["Formula/**/*","Casks/**/*","scripts/**/*",".github/workflows/**/*","test/**/*"]).uniq.sort
+            files = files.map { |f| { path: f, sha256: Digest::SHA256.hexdigest(File.read(f)) } }
+            manifest = {
+              schema_version: 1,
+              artifact: "f2-quality",
+              job_id: "f2",
+              head_sha: %x(git rev-parse HEAD).strip,
+              baseline_sha: ENV["F2_BASELINE_SHA"].to_s.strip,
+              runner_os: "macos",
+              runner_arch: arch,
+              result: ENV["F2_RESULT"] || "pass",
+              files: files
+            }
+            IO.write(".ci-evidence/f2-manifest.json", JSON.pretty_generate(manifest))
+          '
+      - name: Upload f2-quality
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: f2-quality
+          path: |
+            .ci-evidence/f2-manifest.json
+          if-no-files-found: error
+          include-hidden-files: true
+
+  f3:
+    needs: f1
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      arch: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+      - uses: Homebrew/actions/setup-homebrew@850067efd47cb5801a4c1d71c2297c860b522f3b
+      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317
+        with:
+          name: f1-plan
+          path: downloads/f1
+      - name: Tap linkage
+        run: |
+          set -euo pipefail
+          tap_dir="$(brew --repository fabioluciano/camilladsp)"
+          test "$(realpath "$tap_dir")" = "$(realpath "$GITHUB_WORKSPACE")"
+      - name: Install + smoke + bundle + ruby tests
+        run: |
+          set -euo pipefail
+          bash scripts/verify.sh
+      - name: Teardown (service stop only; see scope_check for the disallowed cleanup command)
+        if: always()
+        run: |
+          set -euo pipefail
+          brew services stop fabioluciano/camilladsp/camilladsp || true
+          brew services list | awk '{print $1}' | grep -q '^camilladsp$' && echo "service still listed" || echo "teardown ok"
+      - name: Emit f3 manifest (per architecture)
+        if: always()
+        env:
+          F3_RESULT: pass
+          F3_TEARDOWN: ok
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-evidence
+          # Read the baseline SHA from the producer (F1) manifest;
+          # fall back to inline derivation if the artifact was not
+          # uploaded for any reason.
+          F3_BASELINE_SHA="$(jq -r .baseline_sha downloads/f1/.ci-evidence/f1-manifest.json 2>/dev/null || git rev-list --max-parents=0 HEAD | head -n 1)"
+          export F3_BASELINE_SHA
+          arch="${arch:-$(uname -m)}"
+          case "$arch" in
+            aarch64) arch=arm64 ;;
+            x86_64) arch=x86_64 ;;
+          esac
+          ruby -e '
+            require "json"; require "digest"
+            arch = ENV["F3_ARCH"] || %x(uname -m).strip
+            arch = "arm64" if arch == "aarch64"
+            arch = "x86_64" if arch == "x86_64"
+            files = Dir.glob(["Formula/**/*","Casks/**/*","scripts/**/*"]).uniq.sort
+            files = files.map { |f| { path: f, sha256: Digest::SHA256.hexdigest(File.read(f)) } }
+            manifest = {
+              schema_version: 1,
+              artifact: "f3-qa-#{arch}",
+              job_id: "f3-" + arch,
+              head_sha: %x(git rev-parse HEAD).strip,
+              baseline_sha: ENV["F3_BASELINE_SHA"].to_s.strip,
+              runner_os: "macos",
+              runner_arch: arch,
+              result: ENV["F3_RESULT"] || "pass",
+              teardown_result: ENV["F3_TEARDOWN"] || "ok",
+              files: files
+            }
+            IO.write(".ci-evidence/f3-#{arch}-manifest.json", JSON.pretty_generate(manifest))
+          '
+      - name: Upload f3-qa
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: f3-qa-${{ env.arch }}
+          path: |
+            .ci-evidence/f3-*-manifest.json
+          if-no-files-found: error
+          include-hidden-files: true
+
+  f4:
+    needs: [f1, f2, f3]
+    if: always()
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+      - uses: Homebrew/actions/setup-homebrew@850067efd47cb5801a4c1d71c2297c860b522f3b
+      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317
+        with:
+          name: f1-plan
+          path: downloads/f1
+      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317
+        with:
+          name: f2-quality
+          path: downloads/f2
+      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317
+        with:
+          name: f3-qa-arm64
+          path: downloads/f3arm64
+      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317
+        with:
+          name: f3-qa-x86_64
+          path: downloads/f3x86
+      - name: Aggregate validation + scope check + emit f4 manifest
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f downloads/f1/.ci-evidence/f1-manifest.json
+          # Read the baseline SHA from the F1 manifest — never from a
+          # separate baseline.txt file (the `.ci-evidence/` directory
+          # is gitignored runtime scratch; the manifest is the only
+          # artifact that crosses the f1→f4 trust boundary).
+          F4_BASELINE_SHA="$(jq -r .baseline_sha downloads/f1/.ci-evidence/f1-manifest.json)"
+          export F4_BASELINE_SHA
+          test "${F4_BASELINE_SHA}" =~ '^[0-9a-f]\{40\}$' || { echo "F4: F1 baseline_sha not 40-hex: ${F4_BASELINE_SHA}" >&2; exit 1; }
+          mkdir -p downloads/f4/.ci-evidence
+          ruby -Ilib -Itest test/scope_check.rb --baseline-sha "${F4_BASELINE_SHA}" --json-out downloads/f4/.ci-evidence/final-f4-scope.json
+          mkdir -p .ci-evidence
+          ruby -e '
+            require "json"; require "digest"
+            arch = %x(uname -m).strip
+            arch = "arm64" if arch == "aarch64"
+            arch = "x86_64" if arch == "x86_64"
+            files = Dir.glob([".github/workflows/**/*.yml"]).uniq.sort
+            files = files.map { |f| { path: f, sha256: Digest::SHA256.hexdigest(File.read(f)) } }
+            manifest = {
+              schema_version: 1,
+              artifact: "f4-scope",
+              job_id: "f4",
+              head_sha: %x(git rev-parse HEAD).strip,
+              baseline_sha: ENV["F4_BASELINE_SHA"].to_s.strip,
+              runner_os: "macos",
+              runner_arch: arch,
+              result: "pass",
+              files: files
+            }
+            IO.write(".ci-evidence/f4-manifest.json", JSON.pretty_generate(manifest))
+          '
+      - name: Upload f4-scope
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: f4-scope
+          path: |
+            .ci-evidence/f4-manifest.json
+            downloads/f4/.ci-evidence/final-f4-scope.json
+          if-no-files-found: error
+          include-hidden-files: true

@@ -1,0 +1,166 @@
+# Update workflow for the fabioluciano/camilladsp Homebrew tap.
+#
+# User invariant (2026-08-01): "Toda vez que tiver uma nova tag, [o tap]
+# tem que buildar [e] disponibilizar para as pessoas uma nova versão."
+# This workflow IS the trigger that turns a new upstream tag into a
+# published tap pin. Triggers, in priority order:
+#   * `repository_dispatch: types: [upstream-release]` — fired by the
+#     upstream `HEnquist/*` repos (CamillaDSP, CamillaGUI, pycamilladsp,
+#     pycamilladsp-plot, camilladsp-setupscripts) on each new release
+#     tag, so the new pin lands within minutes of upstream tagging.
+#   * `workflow_dispatch` — manual reconciliation by a maintainer.
+#   * `schedule: 0 6 * * *` — daily 06:00 UTC safety net that catches
+#     any missed `repository_dispatch` event.
+#
+# The Python updater reads the live GitHub Releases + PyPI APIs (NOT
+# a fixture); the test fixtures under `test/fixtures/update_versions/`
+# are exercised by `test/run_update_workflow_fixture.rb` and are
+# NEVER used in this YAML.
+#
+# Order is strictly:
+#   1. checkout (full history) so `git diff` has a baseline
+#   2. Homebrew setup (required by the audit workflow too)
+#   3. transactional updater against the live APIs (`GITHUB_TOKEN` is
+#      forwarded explicitly; it is required for higher rate limits and
+#      for the PyPI lookup)
+#   4. diff check; a no-op run MUST NOT open a PR
+#   5. full validation (`scripts/verify.sh` + `brew audit --strict`) —
+#      only on diff
+#   6. open a single PR via peter-evans/create-pull-request with an
+#      explicit token — only on diff AND validation success
+#
+# Concurrency: a single group per workflow+ref prevents the daily
+# cron and a manual dispatch (or two `repository_dispatch` events
+# fired back-to-back) from racing and producing duplicate PRs.
+# `cancel-in-progress: false` so a slow update is never cut off
+# mid-flight by a fresher one.
+#
+# Token for `peter-evans/create-pull-request`:
+#   * `secrets.UPDATE_PR_TOKEN` is preferred — a GitHub App
+#     installation token or a PAT that triggers downstream
+#     `workflow_run` events on the auto-PR branch.
+#   * Fallback: `secrets.GITHUB_TOKEN` opens the PR but, by GitHub
+#     policy, does NOT trigger downstream `on: pull_request` runs on
+#     that branch. For tap repos that require `audit.yml` to gate the
+#     auto-PR, configure `UPDATE_PR_TOKEN` and rotate it via the
+#     installation's expiry.
+#
+# Permissions are deliberately `contents: write` + `pull-requests: write`
+# (different from `audit.yml`, which is `contents: read`); the updater
+# pushes a commit and peter-evans opens a PR. No other workflow in this
+# tap has write permissions.
+#
+# All Homebrew / checkout / PR actions are SHA-pinned to a known-good
+# revision; bumping them is a deliberate change and must be reviewed
+# alongside any GitHub Actions surface that depends on them.
+#
+# The local black-box mirror of this workflow lives in
+# `test/run_update_workflow_fixture.rb`: it copies the fixture under
+# `test/fixtures/update_versions/{happy,up-to-date}/` into a tempdir,
+# runs the same updater subprocess, and asserts the same gating
+# (diff check → validation → PR) that this YAML encodes.
+name: Update packages
+
+on:
+  repository_dispatch:
+    types: [upstream-release]
+  workflow_dispatch:
+  schedule:
+    # Daily at 06:00 UTC; reconciliation safety net for missed
+    # `repository_dispatch` events.
+    - cron: "0 6 * * *"
+
+# One in-flight update per (workflow, ref) at a time. We do NOT cancel
+# in-progress runs: a slow upstream API call should be allowed to finish
+# so the resulting PR is the union of every change since the last green
+# run, not a partial overlay.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: Homebrew/actions/setup-homebrew@850067efd47cb5801a4c1d71c2297c860b522f3b
+
+      - name: Configure git committer
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run transactional updater (live GitHub + PyPI)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/update_versions.py
+
+      - name: Check for diff
+        id: diff
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "has_diff=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate (style + audit + bundle + tests)
+        if: steps.diff.outputs.has_diff == 'true'
+        run: |
+          set -euo pipefail
+          bash scripts/verify.sh
+          brew audit --strict camillagui
+          for f in camilladsp camilladsp-config camilladsp-controller camilladsp-setupscripts camilladsp-suite pycamilladsp pycamilladsp-plot; do
+            brew audit --strict "$f"
+          done
+
+      - name: Extract version summary for PR comment
+        if: steps.diff.outputs.has_diff == 'true'
+        id: summary
+        run: |
+          set -euo pipefail
+          {
+            echo "### Auto-update diff"
+            echo ""
+            echo '```'
+            git diff --stat | head -50
+            echo '```'
+            echo ""
+            echo "Triggered by: ${{ github.event_name }}"
+            if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+              echo "Upstream client_payload: ${{ toJSON(github.event.client_payload) }}"
+            fi
+            echo "Run: ${{ github.run_id }}"
+          } > .ci-evidence/update-pr-body.md
+
+      - name: Open PR (only if diff AND validation succeeded)
+        if: steps.diff.outputs.has_diff == 'true'
+        uses: peter-evans/create-pull-request@7ec5aae3c91d101b005af46adc760d265911886a
+        with:
+          token: ${{ secrets.UPDATE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          commit-message: "chore(tap): automated package updates"
+          branch: automations/package-updates-${{ github.run_id }}
+          title: "Automated package updates"
+          body-path: .ci-evidence/update-pr-body.md
+          delete-branch: true
+
+      - name: Final summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.diff.outputs.has_diff }}" = "true" ]; then
+            echo "Updated: a PR will be (or has been) opened."
+          else
+            echo "Up-to-date: no changes; no PR opened."
+          fi

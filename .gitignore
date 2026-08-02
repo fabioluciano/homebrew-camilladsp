@@ -1,0 +1,8 @@
+.DS_Store
+*.log
+__pycache__/
+.ruff_cache/
+.venv/
+.omo/
+# CI runtime artifacts (regenerated on each run; do not track)
+/.ci-evidence/

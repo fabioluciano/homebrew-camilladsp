@@ -1,0 +1,16 @@
+[
+  {"url":"https://api.github.com/repos/HEnquist/camilladsp/releases/latest","body":{"tag_name":"v2.0.0","assets":[{"name":"camilladsp-macos-aarch64.tar.gz","browser_download_url":"https://github.com/HEnquist/camilladsp/releases/download/v2.0.0/camilladsp-macos-aarch64.tar.gz","digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111"},{"name":"camilladsp-macos-amd64.tar.gz","browser_download_url":"https://github.com/HEnquist/camilladsp/releases/download/v2.0.0/camilladsp-macos-amd64.tar.gz","digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222"}]}},
+  {"url":"https://api.github.com/repos/HEnquist/camilladsp/git/refs/tags/v2.0.0","body":{"object":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}},
+  {"url":"https://api.github.com/repos/HEnquist/camillagui-backend/releases/latest","body":{"tag_name":"v3.0.0","assets":[{"name":"bundle_macos_aarch64.tar.gz","browser_download_url":"https://github.com/HEnquist/camillagui-backend/releases/download/v3.0.0/bundle_macos_aarch64.tar.gz","digest":"sha256:3333333333333333333333333333333333333333333333333333333333333333"},{"name":"bundle_macos_intel.tar.gz","browser_download_url":"https://github.com/HEnquist/camillagui-backend/releases/download/v3.0.0/bundle_macos_intel.tar.gz","digest":"sha256:4444444444444444444444444444444444444444444444444444444444444444"}]}},
+  {"url":"https://api.github.com/repos/HEnquist/camillagui-backend/git/refs/tags/v3.0.0","body":{"object":{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}},
+  {"url":"https://api.github.com/repos/HEnquist/pycamilladsp/releases/latest","body":{"tag_name":"v2.0.0","assets":[]}},
+  {"url":"https://api.github.com/repos/HEnquist/pycamilladsp/git/refs/tags/v2.0.0","body":{"object":{"sha":"cccccccccccccccccccccccccccccccccccccccc"}}},
+  {"url":"https://api.github.com/repos/HEnquist/pycamilladsp-plot/releases/latest","body":{"tag_name":"v2.1.0","assets":[]}},
+  {"url":"https://api.github.com/repos/HEnquist/pycamilladsp-plot/git/refs/tags/v2.1.0","body":{"object":{"sha":"dddddddddddddddddddddddddddddddddddddddd"}}},
+  {"url":"https://api.github.com/repos/HEnquist/camilladsp-setupscripts/releases/latest","body":{"tag_name":"v2.2.0","assets":[]}},
+  {"url":"https://api.github.com/repos/HEnquist/camilladsp-setupscripts/git/refs/tags/v2.2.0","body":{"object":{"sha":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}}},
+  {"url":"https://api.github.com/repos/HEnquist/camilladsp-config/commits/master","body":{"sha":"ffffffffffffffffffffffffffffffffffffffff","commit":{"committer":{"date":"2026-07-31T00:00:00Z"}}}},
+  {"url":"https://api.github.com/repos/HEnquist/camilladsp-controller/commits/main","body":{"sha":"1212121212121212121212121212121212121212","commit":{"committer":{"date":"2026-07-30T00:00:00Z"}}}},
+  {"url":"https://pypi.org/pypi/pyyaml/json","body":{"urls":[{"packagetype":"sdist","url":"https://files.pythonhosted.org/packages/new/pyyaml-2.0.0.tar.gz","digests":{"sha256":"abababababababababababababababababababababababababababababababab"}}]}},
+  {"url":"https://pypi.org/pypi/websocket-client/json","body":{"urls":[{"packagetype":"sdist","url":"https://files.pythonhosted.org/packages/new/websocket_client-2.0.0.tar.gz","digests":{"sha256":"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"}}]}}
+]
