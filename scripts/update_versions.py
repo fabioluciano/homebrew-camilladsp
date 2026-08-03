@@ -384,8 +384,8 @@ def update_tagged_formula(
     text = path.read_text(encoding="utf-8")
     text = replace_line_once(
         text,
-        r"(?P<prefix>^(?:[ \t]*)|,[ \t]*)tag:[ \t]+(['\"])[^'\"]+\2",
-        rf"\g<1>tag: \g<2>{tag}\g<2>",
+        r"(?P<prefix>^(?:[ \t]*)|,[ \t]*)tag[ \t]*:[ \t]+(['\"])[^'\"]+\2",
+        rf"\g<1>tag{' ' * 6}: \g<2>{tag}\g<2>",
         f"{path}: tag",
     )
     text = replace_line_once(
@@ -486,13 +486,13 @@ def update_suite(root: Path, fetch: Fetcher, core_version: str) -> tuple[str, st
     text = path.read_text(encoding="utf-8")
     text = replace_line_once(
         text,
-        r"(?P<prefix>^(?:[ \t]*)|,[ \t]*)tag:[ \t]+(['\"])[^'\"]+\2",
-        rf"\g<1>tag: \g<2>{tag}\g<2>",
+        r"(?P<prefix>^(?:[ \t]*)|,[ \t]*)tag[ \t]*:[ \t]+(['\"])[^'\"]+\2",
+        rf"\g<1>tag{' ' * 6}: \g<2>{tag}\g<2>",
         f"{path}: tag",
     )
     text = replace_line_once(
         text,
-        r"(?P<prefix>^(?:[ \t]*)|,[ \t]*)revision:[ \t]+(['\"])[0-9a-f]+\2",
+        r"(?P<prefix>^(?:[ \t]*)|,[ \t]*)revision[ \t]*:[ \t]+(['\"])[0-9a-f]+\2",
         rf"\g<1>revision: \g<2>{revision}\g<2>",
         f"{path}: revision",
     )
