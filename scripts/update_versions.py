@@ -356,9 +356,11 @@ def update_gui(root: Path, fetch: Fetcher) -> tuple[str, str]:
     def replace_hashes(match: re.Match[str]) -> str:
         arm_quote = match.group("armq") or '"'
         intel_quote = match.group("intelq") or '"'
+        prefix = match.group("prefix")
+        continuation = " " * len(prefix)
         return (
-            f"{match.group('prefix')}arm: {arm_quote}{assets[arm_name][1]}{arm_quote}, "
-            f"intel: {intel_quote}{assets[intel_name][1]}{intel_quote}"
+            f"{prefix}arm:   {arm_quote}{assets[arm_name][1]}{arm_quote},\n"
+            f"{continuation}intel: {intel_quote}{assets[intel_name][1]}{intel_quote}"
         )
 
     text = substitute_exact(
