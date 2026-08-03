@@ -19,10 +19,10 @@
 # the same invariant holds in a developer laptop or pre-commit hook.
 #
 # Checks:
-#   1. The cask must NOT use `sha256 :no_check` (real arch-specific
+#   1. The GUI formula must NOT use `sha256 :no_check` (real arch-specific
 #      hashes are required; this guard rail is upstream-driven).
 #   2. The Brewfile must be canonical: `tap`, then `brew .../camilladsp-suite`,
-#      then `cask .../camillagui`, in that order, with no duplicates.
+#      then `brew .../camillagui`, in that order, with no duplicates.
 #   3. No `brew bundle cleanup --force` may appear in any documentation
 #      or caveats block; cleanup in this tap means only stopping and
 #      uninstalling the camilladsp launchd service.
@@ -106,16 +106,15 @@ class ScopeCheck < Minitest::Test
   def setup
     @repo_root = self.class.repo_root
     @formula_dir = @repo_root / 'Formula'
-    @cask_dir = @repo_root / 'Casks'
   end
 
-  # --- 1. cask must NOT use :no_check -----------------------------
-  def test_cask_has_no_no_check
-    cask = @cask_dir / 'camillagui.rb'
-    flunk("cask missing: #{cask}") unless cask.exist?
-    text = File.read(cask.to_s, encoding: 'utf-8')
+  # --- 1. GUI formula must NOT use :no_check -------------------------
+  def test_gui_formula_has_no_no_check
+    gui = @formula_dir / 'camillagui.rb'
+    flunk("formula missing: #{gui}") unless gui.exist?
+    text = File.read(gui.to_s, encoding: 'utf-8')
     refute_includes text, 'sha256 :no_check',
-                    'cask must NOT use `sha256 :no_check`; the upstream assets have ' \
+                    'camillagui formula must NOT use `sha256 :no_check`; the upstream assets have ' \
                     'real arch-specific SHA-256 values that must be pinned'
   end
 
@@ -128,10 +127,10 @@ class ScopeCheck < Minitest::Test
     expected = [
       'tap "fabioluciano/camilladsp"',
       'brew "fabioluciano/camilladsp/camilladsp-suite"',
-      'cask "fabioluciano/camilladsp/camillagui"'
+      'brew "fabioluciano/camilladsp/camillagui"'
     ]
     assert_equal expected, lines,
-                 "Brewfile must be canonical (tap, brew suite, cask) in that order.\n" \
+                 "Brewfile must be canonical (tap, brew suite, brew gui) in that order.\n" \
                  "  expected: #{expected}\n  actual:   #{lines}"
     # No duplicate entries
     assert_equal lines.length, lines.uniq.length,
@@ -175,11 +174,6 @@ class ScopeCheck < Minitest::Test
 
     if @formula_dir.directory?
       @formula_dir.glob('*.rb').each do |path|
-        scan_text.call(path.basename.to_s, File.read(path.to_s, encoding: 'utf-8'))
-      end
-    end
-    if @cask_dir.directory?
-      @cask_dir.glob('*.rb').each do |path|
         scan_text.call(path.basename.to_s, File.read(path.to_s, encoding: 'utf-8'))
       end
     end
@@ -311,7 +305,7 @@ class ScopeCheck < Minitest::Test
       end
 
       offenders << "README.md:#{line_number} mentions `:no_check` in a positive " \
-                   'form; the cask already ships real arch-specific hashes'
+                   'form; the formula already ships real arch-specific hashes'
     end
     if text =~ /audio (?:was|is) exercised/i
       offenders << 'README claims audio was exercised; the runner has no ' \

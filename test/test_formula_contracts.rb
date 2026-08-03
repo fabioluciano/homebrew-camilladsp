@@ -37,21 +37,21 @@ EXPECTED_FORMULAE = %w[
   camilladsp-controller
   camilladsp-setupscripts
   camilladsp-suite
+  camillagui
   pycamilladsp
   pycamilladsp-plot
 ].freeze
-EXPECTED_CASKS = %w[camillagui].freeze
 
 RE_VERSION = /^\s*version\s+["']([^"']+)["']/m
 RE_URL = /^\s*url\s+["']([^"']+)["']/m
-RE_SHA256_ARCH = /sha256\s+arm:\s*["']([0-9a-f]{64})["'],\s*\n?\s*intel:\s*["']([0-9a-f]{64})["']/
+RE_SHA256_ARCH = /sha256\s+["']([0-9a-f]{64})["']/
 RE_HOMEPAGE = /^\s*homepage\s+["']([^"']+)["']/m
 RE_DESC = /^\s*desc\s+["']([^"']+)["']/m
 RE_TEST_DO = /test do\s*(.*?)\n  end\b/m
 RE_SHELL_OUTPUT = /shell_output\(/
 
-# Real arch-specific cask hashes (Todo 4 pinned via GitHub Releases API).
-EXPECTED_CASK_SHA = {
+# Real arch-specific SHA-256 hashes (pinned via GitHub Releases API).
+EXPECTED_GUI_SHA = {
   'arm' => '09da0b654aefaa1c983f0208524d9abf768e8a13ae4670d69bc65c17fd4b4f63',
   'intel' => '4540c78bc05b86977276bea5188f9308d4ccaad954ca8260b47d2b1b6c74d641'
 }.freeze
@@ -110,29 +110,18 @@ class BaseRepoTest < Minitest::Test
   def setup
     @repo_root = self.class.repo_root
     @formula_dir = @repo_root / 'Formula'
-    @cask_dir = @repo_root / 'Casks'
   end
 
   def formula_path(name)
     @formula_dir / "#{name}.rb"
   end
-
-  def cask_path(name)
-    @cask_dir / "#{name}.rb"
-  end
 end
 
 class FormulaSurfaceTest < BaseRepoTest
-  def test_seven_formulae_present
+  def test_eight_formulae_present
     actual = @formula_dir.glob('*.rb').map { |p| p.basename('.rb').to_s }.sort
     assert_equal EXPECTED_FORMULAE.sort, actual,
                  "Formula/ must contain exactly #{EXPECTED_FORMULAE}; got #{actual}"
-  end
-
-  def test_cask_present
-    actual = @cask_dir.glob('*.rb').map { |p| p.basename('.rb').to_s }.sort
-    assert_equal EXPECTED_CASKS.sort, actual,
-                 "Casks/ must contain exactly #{EXPECTED_CASKS}; got #{actual}"
   end
 
   def test_required_stanzas_present_in_formulae
@@ -145,37 +134,24 @@ class FormulaSurfaceTest < BaseRepoTest
     end
   end
 
-  def test_required_stanzas_present_in_cask
-    @cask_dir.glob('*.rb').sort.each do |path|
-      text = File.read(path.to_s, encoding: 'utf-8')
-      assert_match(RE_DESC, text, "#{path.basename('.rb')}: missing `desc` stanza")
-      assert_match(RE_HOMEPAGE, text, "#{path.basename('.rb')}: missing `homepage` stanza")
-      assert_match(RE_URL, text, "#{path.basename('.rb')}: missing `url` stanza")
-      assert_match(RE_VERSION, text, "#{path.basename('.rb')}: missing `version` stanza")
-      refute_includes text, 'sha256 :no_check',
-                      "#{path.basename('.rb')}: cask must NOT use `sha256 :no_check` " \
-                      '(real arch-specific hashes are required)'
-    end
+  def test_gui_formula_uses_real_arch_specific_hashes
+    gui = formula_path('camillagui')
+    text = File.read(gui.to_s, encoding: 'utf-8')
+    sha_matches = text.scan(/sha256\s+["']([0-9a-f]{64})["']/).flatten
+    assert sha_matches.length >= 2, 'camillagui formula must declare two sha256 values (ARM and Intel)'
+    assert_equal EXPECTED_GUI_SHA['arm'], sha_matches[0],
+                 'camillagui formula ARM sha256 drifted from the pinned release asset'
+    assert_equal EXPECTED_GUI_SHA['intel'], sha_matches[1],
+                 'camillagui formula Intel sha256 drifted from the pinned release asset'
   end
 
-  def test_cask_uses_real_arch_specific_hashes
-    cask = cask_path('camillagui')
-    text = File.read(cask.to_s, encoding: 'utf-8')
-    m = text.match(RE_SHA256_ARCH)
-    refute_nil m, 'camillagui cask must declare sha256 arm: ..., intel: ...'
-    arm = m[1]
-    intel = m[2]
-    assert_equal EXPECTED_CASK_SHA['arm'], arm,
-                 'camillagui cask ARM sha256 drifted from the pinned release asset'
-    assert_equal EXPECTED_CASK_SHA['intel'], intel,
-                 'camillagui cask Intel sha256 drifted from the pinned release asset'
-  end
-
-  def test_cask_arch_declaration
-    cask = cask_path('camillagui')
-    text = File.read(cask.to_s, encoding: 'utf-8')
-    assert_match(/arch\s+arm:\s*["']aarch64["']\s*,\s*intel:\s*["']intel["']/, text,
-                 'camillagui cask must declare `arch arm: ..., intel: ...` substitutions')
+  def test_gui_formula_has_on_macos_block
+    gui = formula_path('camillagui')
+    text = File.read(gui.to_s, encoding: 'utf-8')
+    assert_match(/on_macos\s+do/, text,
+                 'camillagui formula must declare `on_macos do` for arch-specific URLs')
+    assert_match(/Hardware::CPU\.arm\?/, text,
+                 'camillagui formula must use `Hardware::CPU.arm?` for architecture dispatch')
   end
 
   def test_formula_versions_are_pinned
@@ -186,16 +162,32 @@ class FormulaSurfaceTest < BaseRepoTest
       camilladsp-suite
       camilladsp-config
     ].to_set
+    # Formulae that omit `version` because Homebrew infers it from the URL
+    # path (e.g. v4.1.3/camilladsp-macos-aarch64.tar.gz or
+    # v4.1.0/bundle_macos_aarch64.tar.gz).
+    url_inferred = %w[camilladsp camillagui].to_set
     @formula_dir.glob('*.rb').sort.each do |path|
-      next if binless.include?(path.basename('.rb').to_s)
+      name = path.basename('.rb').to_s
+      next if binless.include?(name)
 
       text = File.read(path.to_s, encoding: 'utf-8')
       m = text.match(RE_VERSION)
-      refute_nil m,
-                 "#{path.basename('.rb')}: missing top-level `version` line " \
-                 '(asset-pinned formulae must declare a version)'
-      refute_empty m[1].strip,
-                   "#{path.basename('.rb')}: top-level `version` is empty"
+      if url_inferred.include?(name)
+        if m
+          refute_empty m[1].strip,
+                       "#{name}: top-level `version` is empty"
+        else
+          assert_match(%r{/v\d+\.\d+\.\d+/}, text,
+                       "#{name}: no explicit `version` and no versioned URL " \
+                       '(url-inferred formulae must embed v<X>.<Y>.<Z> in URLs)')
+        end
+      else
+        refute_nil m,
+                   "#{name}: missing top-level `version` line " \
+                   '(asset-pinned formulae must declare a version)'
+        refute_empty m[1].strip,
+                     "#{name}: top-level `version` is empty"
+      end
     end
   end
 

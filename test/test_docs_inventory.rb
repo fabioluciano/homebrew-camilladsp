@@ -12,11 +12,11 @@
 #   2. README's CLI rows map 1:1 onto the `camilladsp-suite`
 #      `depends_on` list (no extra CLI rows; no missing CLI rows).
 #   3. README's version column matches the version (or tag) extracted
-#      from each `Formula/*.rb` and `Casks/camillagui.rb`.
-#   4. README's cask SHA-256 sums match the pinned sums in the cask.
+#      from each `Formula/*.rb`.
+#   4. README's GUI SHA-256 sums match the pinned sums in the formula.
 #   5. No token-like example (GitHub PAT, AWS key, password=, token=,
 #      Bearer, PEM header) survives in any of the user-facing docs.
-#   6. The cask does not use `sha256 :no_check`.
+#   6. The GUI formula does not use `sha256 :no_check`.
 #   7. Controller docs claim `-d` is OPTIONAL and at-least-one of
 #      `-s` or `-a` is required.
 #   8. README mentions `tccutil reset Microphone` (canonical remedy).
@@ -44,6 +44,11 @@ EXPECTED_PACKAGE_ORDER = %w[
 ].freeze
 
 EXPECTED_CASK_SHAS = {
+  'arm' => '09da0b654aefaa1c983f0208524d9abf768e8a13ae4670d69bc65c17fd4b4f63',
+  'intel' => '4540c78bc05b86977276bea5188f9308d4ccaad954ca8260b47d2b1b6c74d641'
+}.freeze
+
+EXPECTED_GUI_SHAS = {
   'arm' => '09da0b654aefaa1c983f0208524d9abf768e8a13ae4670d69bc65c17fd4b4f63',
   'intel' => '4540c78bc05b86977276bea5188f9308d4ccaad954ca8260b47d2b1b6c74d641'
 }.freeze
@@ -117,7 +122,6 @@ class TestDocsInventory < Minitest::Test
     @brewfile_path = (self.class.brewfile_path || (repo_root / 'Brewfile')).to_s
     @suite_path = (self.class.suite_path || (repo_root / 'Formula' / 'camilladsp-suite.rb')).to_s
     @formula_dir = (Pathname(@readme_path).realpath.parent / 'Formula').to_s
-    @cask_dir = (Pathname(@readme_path).realpath.parent / 'Casks').to_s
     @readme = File.read(@readme_path, encoding: 'utf-8')
     @brewfile = File.read(@brewfile_path, encoding: 'utf-8')
     @suite_text = File.read(@suite_path, encoding: 'utf-8')
@@ -177,9 +181,9 @@ class TestDocsInventory < Minitest::Test
     assert_equal(
       ['tap "fabioluciano/camilladsp"',
        'brew "fabioluciano/camilladsp/camilladsp-suite"',
-       'cask "fabioluciano/camilladsp/camillagui"'],
+       'brew "fabioluciano/camilladsp/camillagui"'],
       brewfile_lines,
-      "Brewfile must be canonical: tap + brew suite + cask, no duplicates.\n" \
+      "Brewfile must be canonical: tap + brew suite + brew gui, no duplicates.\n" \
       "  actual: #{brewfile_lines.inspect}"
     )
 
@@ -200,11 +204,15 @@ class TestDocsInventory < Minitest::Test
     text = File.read(path, encoding: 'utf-8')
     # Top-level `version "X.Y.Z"` is the canonical pin for asset-based
     # formulae (camilladsp). For git-tag-based formulae the pin is the
-    # `tag:` argument on the `url` line.
+    # `tag:` argument on the `url` line. For formulae without a top-level
+    # version (inferred from URL), extract from the first download URL.
     if (m = text.match(/^\s*version\s+["']([^"']+)["']/m))
       return m[1]
     end
-    if (m = text.match(/url\s+"[^"]+",\s*tag:\s*["']([^"']+)["']/m))
+    if (m = text.match(/url\s+["'][^"']+["'],\s*tag:\s*["']([^"']+)["']/m))
+      return m[1]
+    end
+    if (m = text.match(%r{/releases/download/v([^/]+)/}m))
       return m[1]
     end
 
@@ -252,6 +260,7 @@ class TestDocsInventory < Minitest::Test
       'camilladsp-controller' => "#{@formula_dir}/camilladsp-controller.rb",
       'camilladsp-setupscripts' => "#{@formula_dir}/camilladsp-setupscripts.rb",
       'camilladsp-suite' => "#{@formula_dir}/camilladsp-suite.rb",
+      'camillagui' => "#{@formula_dir}/camillagui.rb",
       'pycamilladsp' => "#{@formula_dir}/pycamilladsp.rb",
       'pycamilladsp-plot' => "#{@formula_dir}/pycamilladsp-plot.rb"
     }
@@ -265,40 +274,28 @@ class TestDocsInventory < Minitest::Test
                    "README version for `#{package}` drifted from formula pin.\n" \
                    "  formula: #{formula_version}\n  readme:  #{readme_version}"
     end
-
-    cask_version = extract_cask_version("#{@cask_dir}/camillagui.rb")
-    readme_cask_version = readme_version_for('camillagui')
-    refute_nil cask_version
-    refute_nil readme_cask_version,
-               "README's row for `camillagui` is missing a version (cask pin is #{cask_version})"
-    assert_equal normalize_version(cask_version), normalize_version(readme_cask_version),
-                 "README version for `camillagui` drifted from cask pin.\n" \
-                 "  cask:   #{cask_version}\n  readme: #{readme_cask_version}"
   end
 
-  # --- 4. README's cask SHAs match the cask ------------------------
+  # --- 4. README's GUI SHAs match the formula ------------------------
 
-  def test_cask_hashes_match_readme
-    cask_text = File.read("#{@cask_dir}/camillagui.rb", encoding: 'utf-8')
-    m = cask_text.match(/sha256\s+arm:\s*["']([0-9a-f]{64})["'],\s*\n?\s*intel:\s*["']([0-9a-f]{64})["']/)
-    assert m, 'camillagui cask must declare sha256 arm: ..., intel: ...'
+  def test_gui_hashes_match_readme
+    gui_text = File.read("#{@formula_dir}/camillagui.rb", encoding: 'utf-8')
+    sha_matches = gui_text.scan(/sha256\s+["']([0-9a-f]{64})["']/).flatten
+    assert sha_matches.length >= 2, 'camillagui formula must declare sha256 values for ARM and Intel'
 
-    arm_actual = m[1]
-    intel_actual = m[2]
-    assert_equal EXPECTED_CASK_SHAS['arm'], arm_actual,
-                 "camillagui ARM sha256 in cask drifted from the pinned release asset.\n" \
-                 "  expected: #{EXPECTED_CASK_SHAS['arm']}\n  actual:   #{arm_actual}"
-    assert_equal EXPECTED_CASK_SHAS['intel'], intel_actual,
-                 "camillagui Intel sha256 in cask drifted from the pinned release asset.\n" \
-                 "  expected: #{EXPECTED_CASK_SHAS['intel']}\n  actual:   #{intel_actual}"
+    arm_actual = sha_matches[0]
+    intel_actual = sha_matches[1]
+    assert_equal EXPECTED_GUI_SHAS['arm'], arm_actual,
+                 "camillagui ARM sha256 in formula drifted from the pinned release asset.\n" \
+                 "  expected: #{EXPECTED_GUI_SHAS['arm']}\n  actual:   #{arm_actual}"
+    assert_equal EXPECTED_GUI_SHAS['intel'], intel_actual,
+                 "camillagui Intel sha256 in formula drifted from the pinned release asset.\n" \
+                 "  expected: #{EXPECTED_GUI_SHAS['intel']}\n  actual:   #{intel_actual}"
 
-    # README must mention the exact SHAs (the cask is the source of
-    # truth; the README repeats them so users can compare what they
-    # downloaded against the documented expected sum).
-    assert_includes @readme, EXPECTED_CASK_SHAS['arm'],
-                    "README must mention the pinned ARM sha256 (#{EXPECTED_CASK_SHAS['arm']})"
-    assert_includes @readme, EXPECTED_CASK_SHAS['intel'],
-                    "README must mention the pinned Intel sha256 (#{EXPECTED_CASK_SHAS['intel']})"
+    assert_includes @readme, EXPECTED_GUI_SHAS['arm'],
+                    "README must mention the pinned ARM sha256 (#{EXPECTED_GUI_SHAS['arm']})"
+    assert_includes @readme, EXPECTED_GUI_SHAS['intel'],
+                    "README must mention the pinned Intel sha256 (#{EXPECTED_GUI_SHAS['intel']})"
   end
 
   # --- 5. No secret-like examples in any user-facing doc ------------
@@ -340,12 +337,12 @@ class TestDocsInventory < Minitest::Test
                  end.join("\n  ")}"
   end
 
-  # --- 6. Cask does NOT use :no_check ------------------------------
+  # --- 6. GUI formula does NOT use :no_check ------------------------
 
   def test_no_check_assertion_correct
-    cask_text = File.read("#{@cask_dir}/camillagui.rb", encoding: 'utf-8')
-    refute_includes cask_text, 'sha256 :no_check',
-                    'camillagui cask must NOT use `sha256 :no_check`; the upstream assets have ' \
+    gui_text = File.read("#{@formula_dir}/camillagui.rb", encoding: 'utf-8')
+    refute_includes gui_text, 'sha256 :no_check',
+                    'camillagui formula must NOT use `sha256 :no_check`; the upstream assets have ' \
                     'real arch-specific SHA-256 values that must be pinned'
   end
 

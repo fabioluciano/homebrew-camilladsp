@@ -3,4 +3,4 @@
 tap "fabioluciano/camilladsp"
 
 brew "fabioluciano/camilladsp/camilladsp-suite"
-cask "fabioluciano/camilladsp/camillagui"
+brew "fabioluciano/camilladsp/camillagui"

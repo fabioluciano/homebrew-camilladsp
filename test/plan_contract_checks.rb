@@ -39,17 +39,18 @@ EXPECTED_FORMULAE = %w[
   camilladsp-controller
   camilladsp-setupscripts
   camilladsp-suite
+  camillagui
   pycamilladsp
   pycamilladsp-plot
 ].freeze
 
-EXPECTED_CASKS = ['camillagui'].freeze
+EXPECTED_CASKS = [].freeze
 
 # Canonical Brewfile order (Todo 4 finding).
 EXPECTED_BREWFILE = [
   'tap "fabioluciano/camilladsp"',
   'brew "fabioluciano/camilladsp/camilladsp-suite"',
-  'cask "fabioluciano/camilladsp/camillagui"'
+  'brew "fabioluciano/camilladsp/camillagui"'
 ].freeze
 
 # Human-readable upstream component labels (curated; the remaining matrix

@@ -1,7 +1,6 @@
 class Camilladsp < Formula
   desc "Flexible cross-platform IIR and FIR audio DSP engine"
   homepage "https://github.com/HEnquist/camilladsp"
-  version "4.1.3"
   license any_of: ["GPL-3.0-only", "MPL-2.0"]
 
   livecheck do

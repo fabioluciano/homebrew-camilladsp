@@ -29,7 +29,7 @@ SCRIPT = (ROOT / 'scripts' / 'update_versions.py').freeze
 FIXTURES = (ROOT / 'test' / 'fixtures' / 'update_versions').freeze
 EXPECTED_FILES = %w[
   Formula/camilladsp.rb
-  Casks/camillagui.rb
+  Formula/camillagui.rb
   Formula/pycamilladsp.rb
   Formula/pycamilladsp-plot.rb
   Formula/camilladsp-setupscripts.rb
@@ -74,15 +74,15 @@ class UpdateVersionsTest < Minitest::Test
     path.write("#{JSON.pretty_generate(responses)}\n")
   end
 
-  def test_single_quoted_cask_hashes_urls_revisions_and_shas_are_updated
+  def test_formula_hashes_urls_revisions_and_shas_are_updated
     with_fixture do |root|
       stdout, stderr, status = run_updater(root)
       assert status.success?, "stdout=#{stdout}\nstderr=#{stderr}"
 
-      cask = File.read((root / 'Casks/camillagui.rb').to_s)
-      assert_includes cask, "version '3.0.0'"
-      assert_includes cask, "'3333333333333333333333333333333333333333333333333333333333333333'"
-      assert_includes cask, "'4444444444444444444444444444444444444444444444444444444444444444'"
+      gui = File.read((root / 'Formula/camillagui.rb').to_s)
+      refute_match(/^\s*version\s+/, gui, 'camillagui formula has no top-level version line')
+      assert_includes gui, "'3333333333333333333333333333333333333333333333333333333333333333'"
+      assert_includes gui, "'4444444444444444444444444444444444444444444444444444444444444444'"
 
       core = File.read((root / 'Formula/camilladsp.rb').to_s)
       assert_includes core, 'releases/download/v2.0.0/camilladsp-macos-aarch64.tar.gz'
@@ -106,9 +106,9 @@ class UpdateVersionsTest < Minitest::Test
 
   def test_zero_substitutions_returns_one_and_preserves_snapshot
     with_fixture do |root|
-      cask_path = root / 'Casks/camillagui.rb'
-      cask = File.read(cask_path.to_s).sub(/^[[:space:]]*sha256.*$/, '  # no checksum stanza')
-      cask_path.write(cask)
+      gui_path = root / 'Formula/camillagui.rb'
+      gui = File.read(gui_path.to_s).sub(/^[[:space:]]*sha256.*$/, '  # no checksum stanza')
+      gui_path.write(gui)
       before = snapshot(root)
       _, stderr, status = run_updater(root)
       refute status.success?
@@ -120,12 +120,13 @@ class UpdateVersionsTest < Minitest::Test
 
   def test_multiple_substitutions_returns_one_and_preserves_snapshot
     with_fixture do |root|
-      cask_path = root / 'Casks/camillagui.rb'
-      cask = File.read(cask_path.to_s)
-      extra = "\n  sha256 arm: " \
-              "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', " \
-              "intel: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'\n"
-      cask_path.write("#{cask}#{extra}")
+      gui_path = root / 'Formula/camillagui.rb'
+      gui = File.read(gui_path.to_s)
+      # Insert a second url+sha256 pair for the same ARM asset BEFORE the
+      # existing one, so the updater's regex finds 2 matches and aborts.
+      duplicate = "  url 'https://github.com/HEnquist/camillagui-backend/releases/download/v1.0.0/bundle_macos_aarch64.tar.gz'\n" \
+                  "  sha256 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'\n"
+      gui_path.write(gui.sub(/^  url.*bundle_macos_aarch64/, "#{duplicate}\\0"))
       before = snapshot(root)
       _, stderr, status = run_updater(root)
       refute status.success?
@@ -229,7 +230,7 @@ class UpdateVersionsTest < Minitest::Test
 
   def test_rogue_extra_cask_file_fails_scope_check
     with_fixture do |root|
-      File.write((root / 'Casks/sneaky.rb').to_s, %(cask "sneaky" do\nend\n))
+      File.write((root / 'Formula/sneaky.rb').to_s, %(class Sneaky < Formula\nend\n))
       before = snapshot(root)
       _, stderr, status = run_updater(root)
       refute status.success?

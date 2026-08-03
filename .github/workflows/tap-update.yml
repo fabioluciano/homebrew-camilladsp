@@ -120,8 +120,7 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/verify.sh
-          brew audit --strict camillagui
-          for f in camilladsp camilladsp-config camilladsp-controller camilladsp-setupscripts camilladsp-suite pycamilladsp pycamilladsp-plot; do
+          for f in camilladsp camilladsp-config camilladsp-controller camilladsp-setupscripts camilladsp-suite pycamilladsp pycamilladsp-plot camillagui; do
             brew audit --strict "$f"
           done
 

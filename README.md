@@ -10,12 +10,12 @@ brew tap fabioluciano/camilladsp
 
 ## Packages
 
-The tap ships exactly eight Homebrew packages — six CLI formulae, one meta-formula that aggregates them, and one cask for the GUI. The version column is the upstream pin; the packaging column is how the tap installs it.
+The tap ships exactly eight Homebrew packages — seven CLI formulae (including the GUI) and one meta-formula that aggregates the six CLI-only packages. The version column is the upstream pin; the packaging column is how the tap installs it.
 
 | Homebrew package | Upstream component | Packaging |
 |---|---|---|
 | `camilladsp` | CamillaDSP engine 4.1.3 | Native binary (Apple Silicon and Intel) |
-| `camillagui` | CamillaGUI backend/frontend bundle 4.1.0 | Cask |
+| `camillagui` | CamillaGUI backend/frontend bundle 4.1.0 | Native binary (Apple Silicon and Intel) with service block |
 | `pycamilladsp` | Python client library 4.0.0 | Isolated Python virtual environment |
 | `pycamilladsp-plot` | Config validator and plotting tools 4.1.0 | Isolated Python virtual environment |
 | `camilladsp-controller` | Automatic source-format controller 2026.03.19 | Isolated Python application |
@@ -23,11 +23,11 @@ The tap ships exactly eight Homebrew packages — six CLI formulae, one meta-for
 | `camilladsp-setupscripts` | Official setup-script templates 3.0.3 | Shared data and renderer |
 | `camilladsp-suite` | All command-line packages 4.1.3 | Meta-formula (aggregator) |
 
-The cask is intentionally separate from the suite: CamillaGUI is bundled by upstream with its own backend, frontend, and Python runtime, so a separate frontend formula is unnecessary.
+The GUI formula is intentionally separate from the suite: CamillaGUI is bundled by upstream with its own backend, frontend, and Python runtime, so a separate frontend formula is unnecessary.
 
 ## Install everything
 
-Install the tap and run the canonical Brewfile. The Brewfile aggregates the six CLI formulae via the `camilladsp-suite` meta-formula and installs the GUI cask; it never lists the individual CLI formulae.
+Install the tap and run the canonical Brewfile. The Brewfile aggregates the six CLI formulae via the `camilladsp-suite` meta-formula and installs the GUI formula; it never lists the individual CLI formulae.
 
 ```bash
 brew tap fabioluciano/camilladsp
@@ -39,14 +39,14 @@ brew bundle --file="$(brew --repository fabioluciano/camilladsp)/Brewfile"
 ```bash
 brew tap fabioluciano/camilladsp
 brew install camilladsp
-brew install --cask camillagui
+brew install camillagui
 ```
 
 ## Install all command-line packages
 
 ```bash
 brew install camilladsp-suite
-brew install --cask camillagui
+brew install camillagui
 ```
 
 ## Individual packages
@@ -59,9 +59,9 @@ brew install camilladsp-config
 brew install camilladsp-setupscripts
 ```
 
-## Cask
+## GUI formula
 
-The GUI cask is delivered as two architecture-specific tarballs with pinned SHA-256 sums; there is no `sha256 :no_check` placeholder in the cask.
+The GUI formula is delivered as two architecture-specific tarballs with pinned SHA-256 sums; there is no `sha256 :no_check` placeholder in the formula.
 
 ARM64: sha256 09da0b654aefaa1c983f0208524d9abf768e8a13ae4670d69bc65c17fd4b4f63
 Intel: sha256 4540c78bc05b86977276bea5188f9308d4ccaad954ca8260b47d2b1b6c74d641
@@ -136,13 +136,13 @@ This is the canonical remedy recommended by the upstream `backend_coreaudio.md` 
 
 ## Update package versions
 
-The updater is a transactional, allow-listed Python script that reads the official GitHub releases and PyPI, downloads the release assets to calculate the SHA-256 sums, and rewrites exactly the seven `Formula/*.rb` files and `Casks/camillagui.rb` in a single atomic operation. It refuses to fall back to a partial write on failure, and re-running it on an already-current tap is a no-op.
+The updater is a transactional, allow-listed Python script that reads the official GitHub releases and PyPI, downloads the release assets to calculate the SHA-256 sums, and rewrites exactly the eight `Formula/*.rb` files in a single atomic operation. It refuses to fall back to a partial write on failure, and re-running it on an already-current tap is a no-op.
 
 ```bash
 python3 scripts/update_versions.py  # transactional; uses --fetcher-fixture in CI
 ```
 
-The `Update packages` GitHub Actions workflow runs the updater, validates the result with `bash scripts/verify.sh` and `brew audit --strict` on every formula and the cask, and opens a single pull request only when the updater produced a non-empty diff AND the validation passed. See `CONTRIBUTING.md` § "Automated updates" for the full ordering, the diff→validation→PR gating, and the SHA-pinned action versions.
+The `Update packages` GitHub Actions workflow runs the updater, validates the result with `bash scripts/verify.sh` and `brew audit --strict` on every formula, and opens a single pull request only when the updater produced a non-empty diff AND the validation passed. See `CONTRIBUTING.md` § "Automated updates" for the full ordering, the diff→validation→PR gating, and the SHA-pinned action versions.
 
 ## Local validation
 
@@ -168,4 +168,4 @@ homebrew-camilladsp/
 
 ## License
 
-The tap definitions and automation are MIT licensed. Each installed component remains under its own upstream license (CamillaDSP engine: GPL-3.0-only OR MPL-2.0; configuration and Python packages: GPL-3.0-only; the cask does not declare a license because the cask DSL has no `license` stanza).
+The tap definitions and automation are MIT licensed. Each installed component remains under its own upstream license (CamillaDSP engine: GPL-3.0-only OR MPL-2.0; CamillaGUI: GPL-3.0-only; configuration and Python packages: GPL-3.0-only).

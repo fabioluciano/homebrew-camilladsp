@@ -41,7 +41,7 @@ EVIDENCE_DIR = Pathname('.omo') / 'evidence' / 'camilladsp-homebrew-tap-audit'
 
 EXPECTED_UPDATED_FILES = %w[
   Formula/camilladsp.rb
-  Casks/camillagui.rb
+  Formula/camillagui.rb
   Formula/pycamilladsp.rb
   Formula/pycamilladsp-plot.rb
   Formula/camilladsp-setupscripts.rb

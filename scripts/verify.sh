@@ -28,7 +28,7 @@ skip_step() {
 }
 
 # ---------- 1. Static syntax checks (always run) ----------
-for file in Formula/*.rb Casks/*.rb; do
+for file in Formula/*.rb; do
     if ! ruby -c "$file" >/dev/null; then
         printf 'FAIL: syntax check failed for %s\n' "$file" >&2
         exit 1
@@ -48,7 +48,7 @@ done
 
 # Sanity check: every formula is a Homebrew Formula and the cask exists.
 grep -q 'class Camilladsp < Formula' Formula/camilladsp.rb
-grep -q 'cask "camillagui"' Casks/camillagui.rb
+grep -q 'class Camillagui < Formula' Formula/camillagui.rb
 grep -q 'class CamilladspSuite < Formula' Formula/camilladsp-suite.rb
 
 # ---------- 2. Homebrew style + audit ----------
@@ -59,38 +59,23 @@ grep -q 'class CamilladspSuite < Formula' Formula/camilladsp-suite.rb
 if command -v brew >/dev/null 2>&1; then
     echo
     echo '--- brew style ---'
-    brew style Formula/*.rb Casks/*.rb Brewfile
+    brew style Formula/*.rb Brewfile
 
     echo
     echo '--- brew audit (by name) ---'
     # `brew audit [path]` is disabled in recent Homebrew; audit by formula
     # name instead. Cask audits must be `brew audit --strict camillagui`.
     #
-    # NOTE: `brew audit --strict --formula camilladsp` currently flags the
-    # top-level `version "4.1.3"` as "redundant with version scanned from
-    # URL". The version is correct and pinned (see CONTRIBUTING.md
-    # "CamillaDSP engine contracts"); the audit is a RuboCop style
-    # preference, not a correctness check. Per the plan's "Files you may
-    # modify" rule, the version line is out of scope for Todo 5, so we
-    # surface the audit complaint as a warning and continue. Todo 7 (CI
-    # workflow) may resolve this by removing the redundant `version` line
-    # OR by adding an inline `# rubocop:disable Homebrew/RedundantVersion`
-    # comment.
     audit_failed=0
     for formula in camilladsp camilladsp-config camilladsp-controller \
         camilladsp-setupscripts camilladsp-suite \
-        pycamilladsp pycamilladsp-plot; do
+        pycamilladsp pycamilladsp-plot camillagui; do
         if ! brew audit --strict --formula "$formula"; then
             printf 'WARN: brew audit --strict --formula %s reported issues ' \
                 '(see above; treat as advisory, not a hard failure)\n' "$formula"
             audit_failed=1
         fi
     done
-    if ! brew audit --strict --cask camillagui; then
-        printf 'WARN: brew audit --strict --cask camillagui reported issues ' \
-            '(see above; treat as advisory, not a hard failure)\n'
-        audit_failed=1
-    fi
     if [[ $audit_failed -ne 0 ]]; then
         printf 'NOTE: brew audit warnings are advisory. brew style (0 ' \
             'offenses) and brew test (all 7 formulae exit 0) are the binding ' \
@@ -118,12 +103,9 @@ if command -v brew >/dev/null 2>&1; then
     echo '--- brew install (each formula) ---'
     for formula in camilladsp camilladsp-config camilladsp-controller \
         camilladsp-setupscripts camilladsp-suite \
-        pycamilladsp pycamilladsp-plot; do
+        pycamilladsp pycamilladsp-plot camillagui; do
         brew install "$formula"
     done
-    echo
-    echo '--- brew install --cask camillagui ---'
-    brew install --cask camillagui
 else
     skip_step "Homebrew is unavailable for install" required
 fi
@@ -134,7 +116,7 @@ if command -v brew >/dev/null 2>&1; then
     echo '--- brew test (each formula) ---'
     for formula in camilladsp camilladsp-config camilladsp-controller \
         camilladsp-setupscripts camilladsp-suite \
-        pycamilladsp pycamilladsp-plot; do
+        pycamilladsp pycamilladsp-plot camillagui; do
         brew test "$formula"
     done
 else

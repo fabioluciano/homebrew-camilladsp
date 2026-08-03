@@ -44,7 +44,7 @@ GUI_BUNDLE_BASENAMES = (
 TAG_DEREF_MAX_DEPTH = 5
 EXPECTED_FILES = (
     Path("Formula/camilladsp.rb"),
-    Path("Casks/camillagui.rb"),
+    Path("Formula/camillagui.rb"),
     Path("Formula/pycamilladsp.rb"),
     Path("Formula/pycamilladsp-plot.rb"),
     Path("Formula/camilladsp-setupscripts.rb"),
@@ -55,7 +55,6 @@ EXPECTED_FILES = (
 EXPECTED_FORMULA_FILES = {
     path.name for path in EXPECTED_FILES if path.parts[0] == "Formula"
 }
-EXPECTED_CASK_FILES = {path.name for path in EXPECTED_FILES if path.parts[0] == "Casks"}
 
 Fetcher = Callable[[str], Mapping[str, object]]
 
@@ -234,12 +233,10 @@ def replace_line_once(text: str, pattern: str, replacement: str, label: str) -> 
 
 def validate_scope(root: Path) -> None:
     formulae = {path.name for path in (root / "Formula").glob("*.rb")}
-    casks = {path.name for path in (root / "Casks").glob("*.rb")}
-    if formulae != EXPECTED_FORMULA_FILES or casks != EXPECTED_CASK_FILES:
+    if formulae != EXPECTED_FORMULA_FILES:
         raise RuntimeError(
-            "Unexpected updater scope: expected Formula/*.rb and Casks/*.rb to be "
-            f"{sorted(EXPECTED_FORMULA_FILES)} / {sorted(EXPECTED_CASK_FILES)}, "
-            f"found {sorted(formulae)} / {sorted(casks)}"
+            "Unexpected updater scope: expected Formula/*.rb to be "
+            f"{sorted(EXPECTED_FORMULA_FILES)}, found {sorted(formulae)}"
         )
 
 
@@ -297,9 +294,12 @@ def release_assets(
 
 
 def update_version(text: str, version: str, path: Path) -> str:
+    pattern = r"^([ \t]*version[ \t]+)(['\"])[^'\"]+\2"
+    if not re.search(pattern, text, flags=re.MULTILINE):
+        return text
     return replace_line_once(
         text,
-        r"^([ \t]*version[ \t]+)(['\"])[^'\"]+\2",
+        pattern,
         rf"\g<1>\g<2>{version}\g<2>",
         f"{path}: version",
     )
@@ -346,25 +346,19 @@ def update_gui(root: Path, fetch: Fetcher) -> tuple[str, str]:
     assert_asset_basename(
         assets[intel_name][0], GUI_BUNDLE_BASENAMES, f"GUI bundle {intel_name}"
     )
-    path = root / "Casks/camillagui.rb"
+    path = root / "Formula/camillagui.rb"
     text = update_version(path.read_text(encoding="utf-8"), version, path)
-    sha_line = re.compile(
-        r"(?P<prefix>^[ \t]*sha256[ \t]+)(?::no_check|arm:[ \t]*(?P<armq>['\"])[0-9a-f]+(?P=armq),\s*intel:[ \t]*(?P<intelq>['\"])[0-9a-f]+(?P=intelq))",
-        re.MULTILINE,
+    text = replace_line_once(
+        text,
+        r'(^[ \t]*url[ \t]+["\'])(?:[^"\']*/)?bundle_macos_aarch64\.tar\.gz(["\'])\n([ \t]*sha256[ \t]+["\'])[0-9a-f]+(["\'])',
+        rf"\g<1>{assets[arm_name][0]}\g<2>\n\g<3>{assets[arm_name][1]}\g<4>",
+        f"{path}: ARM asset",
     )
-
-    def replace_hashes(match: re.Match[str]) -> str:
-        arm_quote = match.group("armq") or '"'
-        intel_quote = match.group("intelq") or '"'
-        prefix = match.group("prefix")
-        continuation = " " * len(prefix)
-        return (
-            f"{prefix}arm:   {arm_quote}{assets[arm_name][1]}{arm_quote},\n"
-            f"{continuation}intel: {intel_quote}{assets[intel_name][1]}{intel_quote}"
-        )
-
-    text = substitute_exact(
-        text, sha_line.pattern, replace_hashes, f"{path}: architecture SHA-256"
+    text = replace_line_once(
+        text,
+        r'(^[ \t]*url[ \t]+["\'])(?:[^"\']*/)?bundle_macos_intel\.tar\.gz(["\'])\n([ \t]*sha256[ \t]+["\'])[0-9a-f]+(["\'])',
+        rf"\g<1>{assets[intel_name][0]}\g<2>\n\g<3>{assets[intel_name][1]}\g<4>",
+        f"{path}: Intel asset",
     )
     return version, text
 
@@ -546,7 +540,7 @@ def run(root: Path, fetch: Fetcher) -> int:
     validate_scope(root)
     planned: dict[Path, str] = {}
     core_version, planned[Path("Formula/camilladsp.rb")] = update_core(root, fetch)
-    gui_version, planned[Path("Casks/camillagui.rb")] = update_gui(root, fetch)
+    gui_version, planned[Path("Formula/camillagui.rb")] = update_gui(root, fetch)
     versions = [
         ("pycamilladsp", "pycamilladsp.rb"),
         ("pycamilladsp-plot", "pycamilladsp-plot.rb"),

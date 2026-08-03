@@ -5,14 +5,11 @@
 ```bash
 scripts/verify.sh
 brew style Formula/*.rb
-brew style --cask camillagui.rb
 brew audit --strict --formula Formula/*.rb
 brew audit --strict camillagui
 ```
 
-`brew audit --strict --cask <path>` is the disabled path form in
-Homebrew 6.0.x; the canonical invocation is by cask name (`brew
-audit --strict camillagui`).
+`brew audit --strict --formula <name>` is the canonical invocation by formula name.
 
 ## Packages and inventory
 
@@ -21,7 +18,7 @@ The tap ships exactly eight Homebrew packages. The same table appears in `README
 | Homebrew package | Formula/cask path | Key validation |
 |---|---|---|
 | `camilladsp` | `Formula/camilladsp.rb` | `brew style Formula/camilladsp.rb`, `brew test camilladsp`, `ruby -Ilib -Itest test/test_formula_contracts.rb` |
-| `camillagui` | `Casks/camillagui.rb` | `brew style Casks/camillagui.rb`, `brew audit --strict --cask camillagui` |
+| `camillagui` | `Formula/camillagui.rb` | `brew style Formula/camillagui.rb`, `brew audit --strict camillagui` |
 | `pycamilladsp` | `Formula/pycamilladsp.rb` | `brew test pycamilladsp`, `brew audit --strict pycamilladsp` |
 | `pycamilladsp-plot` | `Formula/pycamilladsp-plot.rb` | `brew test pycamilladsp-plot`, `brew audit --strict pycamilladsp-plot` |
 | `camilladsp-controller` | `Formula/camilladsp-controller.rb` | `brew test camilladsp-controller`, `brew audit --strict camilladsp-controller` |
@@ -29,7 +26,7 @@ The tap ships exactly eight Homebrew packages. The same table appears in `README
 | `camilladsp-setupscripts` | `Formula/camilladsp-setupscripts.rb` | `brew test camilladsp-setupscripts`, `brew audit --strict camilladsp-setupscripts` |
 | `camilladsp-suite` | `Formula/camilladsp-suite.rb` | `brew test camilladsp-suite`, `brew audit --strict camilladsp-suite` |
 
-The suite formula is the only `depends_on` aggregator; the Brewfile lists only the suite plus the cask, never the individual CLI formulae. The cask and every formula are real-arch-pinned (no `sha256 :no_check`); `test/scope_check.rb` enforces both contracts.
+The suite formula is the only `depends_on` aggregator; the Brewfile lists only the suite plus the GUI formula, never the individual CLI formulae. The GUI formula and every formula are real-arch-pinned (no `sha256 :no_check`); `test/scope_check.rb` enforces both contracts.
 
 ## Updating releases
 
@@ -41,14 +38,14 @@ python3 scripts/update_versions.py
 
 `scripts/update_versions.py` is a transactional, allow-listed updater. Every release is governed by the user invariant that a new tag must build and publish a new tap release; the updater is the mechanism that turns a tag into the tap pin. It enforces four safety guarantees:
 
-- **Strict scope.** It updates exactly the seven `Formula/*.rb` files and `Casks/camillagui.rb`. It never expands that scope to README, Brewfile, or arbitrary files; any extra `.rb` in `Formula/` or `Casks/`, or any missing expected file, aborts with `Unexpected updater scope` before any write.
-- **One-substitution rule.** Every regex replacement (version line, tag, revision, cask architecture hashes, Python resource URL/SHA-256) must match **exactly once** per file. Zero or multiple matches abort the whole run with a clear `expected exactly one substitution, found N` message and a file:label context, before any disk write.
+- **Strict scope.** It updates exactly the eight `Formula/*.rb` files. It never expands that scope to README, Brewfile, or arbitrary files; any extra `.rb` in `Formula/`, or any missing expected file, aborts with `Unexpected updater scope` before any write.
+- **One-substitution rule.** Every regex replacement (version line, tag, revision, GUI architecture hashes, Python resource URL/SHA-256) must match **exactly once** per file. Zero or multiple matches abort the whole run with a clear `expected exactly one substitution, found N` message and a file:label context, before any disk write.
 - **Upstream validation.** Each repo's release tag is re-validated against the GitHub refs API; every required asset (engine ARM/Intel tarballs, GUI ARM/Intel tarballs) is checked by name and download URL, and every SHA-256 is verified to be a 64-hex string. A missing tag, missing asset, missing branch commit, or non-2xx API response aborts before any write.
 - **Atomic write + rollback.** Before writing, the updater snapshots the bytes and mode of every file in the tap (excluding `.git/` and `.omo/`). It then writes each planned file through an `os.replace`-based atomic rename. If any write fails — or if the post-write SHA-256 of a planned file does not match the bytes that were supposed to land there — every file is restored from the snapshot, including any file that was created during this run. The exit status is 1 and no partial state is ever left on disk.
 
 ### Idempotency
 
-Re-running the updater against a tap that already matches the upstream responses is a no-op: every version, tag, revision, URL, resource SHA-256, and cask architecture hash is already pinned to the value the API returns, so each "exactly one substitution" regex matches and replaces the line with its current value. No second diff. This is verified in `test/test_update_versions.rb` by running the updater twice on the same fixture and asserting the second run produces zero byte-level change.
+Re-running the updater against a tap that already matches the upstream responses is a no-op: every version, tag, revision, URL, resource SHA-256, and GUI architecture hash is already pinned to the value the API returns, so each "exactly one substitution" regex matches and replaces the line with its current value. No second diff. This is verified in `test/test_update_versions.rb` by running the updater twice on the same fixture and asserting the second run produces zero byte-level change.
 
 ### Offline / test mode
 
@@ -69,7 +66,7 @@ The user invariant ("every new tag must build and publish a new tap release") is
   2. `Homebrew/actions/setup-homebrew` to install Homebrew on the macOS-15 runner.
   3. Run the transactional updater against the live GitHub Releases + PyPI APIs: `python3 scripts/update_versions.py` with `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` forwarded explicitly. The fixture under `test/fixtures/update_versions/` is for the local mirror (`test/run_update_workflow_fixture.rb`) only; CI never points the updater at it.
   4. `git diff --quiet` → emit `has_diff=true|false`. **A no-op run MUST NOT open a PR.**
-  5. If `has_diff == 'true'`, run `bash scripts/verify.sh` plus `brew audit --strict` on the cask and every formula. Validation failure aborts the workflow before any PR is opened.
+  5. If `has_diff == 'true'`, run `bash scripts/verify.sh` plus `brew audit --strict` on every formula. Validation failure aborts the workflow before any PR is opened.
   6. If validation passed, write the diff summary to `.ci-evidence/update-pr-body.md` and open a single PR via `peter-evans/create-pull-request`.
 - **Concurrency.** A single `concurrency: group: ${{ github.workflow }}-${{ github.ref }}` prevents the daily cron and a manual dispatch (or two `repository_dispatch` events fired back-to-back) from racing and producing duplicate PRs. `cancel-in-progress: false` keeps a slow in-flight update from being cut off mid-run by a fresher one.
 - **PR token.** `peter-evans/create-pull-request` is invoked with an explicit `token: ${{ secrets.UPDATE_PR_TOKEN || secrets.GITHUB_TOKEN }}`. `UPDATE_PR_TOKEN` is the preferred path — a GitHub App installation token or a PAT — because the default `GITHUB_TOKEN` does NOT trigger downstream `on: pull_request` workflows on the auto-PR branch (per GitHub Actions policy). For tap repos that require `audit.yml` to gate the auto-PR, configure `UPDATE_PR_TOKEN` and rotate it via the installation's expiry; the fallback to `GITHUB_TOKEN` keeps the PR creation working but skips automatic audit on the PR.
@@ -87,10 +84,10 @@ Three of the eight packages are wired as Homebrew services and respond to `brew 
 | Service | Formula/cask | Start | Status |
 |---|---|---|---|
 | `camilladsp` | `Formula/camilladsp.rb` (formula) | `brew services start fabioluciano/camilladsp/camilladsp` | ready in `83252fe` |
-| `camillagui` | `Casks/camillagui.rb` (cask) | `brew services start fabioluciano/camilladsp/camillagui` | ready in `9739443`* |
+| `camillagui` | `Formula/camillagui.rb` (formula) | `brew services start fabioluciano/camilladsp/camillagui` | ready in `9739443`* |
 | `camilladsp-controller` | `Formula/camilladsp-controller.rb` (formula) | `brew services start fabioluciano/camilladsp/camilladsp-controller` | ready in `9739443` |
 
-\* If you ran `brew install --cask fabioluciano/camilladsp/camillagui` **before** commit `9739443` was pushed, brew still tracks the old caskroom copy (no `service do` block). Run `brew reinstall fabioluciano/camilladsp/camillagui` so brew re-reads the cask with the new stanza; otherwise `brew services info` reports the service as unknown. `brew info --cask fabioluciano/camilladsp/camillagui` shows the installed commit under `==> Installed Versions`; cross-check against the tap HEAD before and after reinstall.
+\* If you ran `brew install fabioluciano/camilladsp/camillagui` **before** commit `9739443` was pushed, brew still tracks the old caskroom copy (no `service do` block). Run `brew reinstall fabioluciano/camilladsp/camillagui` so brew re-reads the formula with the service stanza; otherwise `brew services info` reports the service as unknown. `brew info fabioluciano/camilladsp/camillagui` shows the installed version; cross-check against the tap HEAD before and after reinstall.
 
 ### Wiring details
 - **`camilladsp`** — `run [opt_bin/"camilladsp", "-p", "16440", "-w", "-s", "#{var}/camilladsp/statefile.yml"]`, `keep_alive true`, `CAMILLADSP_PORT: 16440`. The default config (`pkgshare/config.yml`) and state file live under `#{var}/camilladsp/`. The wait flag (`-w`) means the engine starts **without a config file** and waits for one to arrive over the websocket at `ws://localhost:16440` — the upstream workflow uses this to push a freshly-validated config atomically before triggering playback.
@@ -107,15 +104,10 @@ brew services restart fabioluciano/camilladsp/camilladsp-controller
 # inspect (shows service stanza + Run/Loaded/Schedulable flags)
 brew services info fabioluciano/camilladsp/camilladsp
 brew services info fabioluciano/camilladsp/camilladsp-controller
-brew services info homebrew.mxcl/camillagui        # casks use homebrew.mxcl prefix, not the tap prefix
+brew services info homebrew.mxcl/camillagui        # formulas use homebrew.mxcl prefix
 
 # list every service under the tap
 brew services list | grep ^homebrew.mxcl.camilladsp
-
-# tail logs in real-time
-tail -F $(brew --prefix)/var/log/camilladsp.log
-tail -F $(brew --prefix)/var/log/camillagui.log
-tail -F $(brew --prefix)/var/log/camilladsp-controller.log
 ```
 
 ### Why only three
@@ -167,7 +159,7 @@ The contracts below were consulted as primary sources on **2026-08-01**, each pi
 - Top-level `depends_on :macos` marks a formula or cask as macOS-only.
 - Python dependencies belong in `resource` blocks with immutable URLs and SHA-256 checksums; formulae must not rely on the contributor's global Python environment.
 - Cask required stanzas are `version`, `sha256` (or the special value `:no_check`), `url`, `name`, `desc`, `homepage`; the cask DSL has no `license` stanza.
-- Cask `arch arm: ..., intel: ...` provides per-architecture substitutions; the `binary` stanza links an executable into `$(brew --prefix)/bin` with an optional `target:` rename.
+- Formula `on_macos do ... if Hardware::CPU.arm? ... else ... end end` provides per-architecture URL and SHA-256 selection; `bin.install` links an executable into `$(brew --prefix)/bin` with an optional rename.
 
 ### Package surface matrix
 
@@ -186,4 +178,4 @@ python3 test/plan_contract_checks.py --inventory-only --json-out /dev/stdout
 | `camilladsp-suite` (formula) | `HEnquist/camilladsp` — meta-package v4.1.3 | none | the six CLI formulae above | MIT (tap) | universal | meta-formula (dependencies only) |
 | `pycamilladsp` (formula) | `HEnquist/pycamilladsp` — Python client v4.0.0 | `pycamilladsp-python` | `libyaml`, `python@3.14`; resources: pyyaml, websocket-client | GPL-3.0-only | universal | Python virtualenv in `libexec` + launcher wrapper |
 | `pycamilladsp-plot` (formula) | `HEnquist/pycamilladsp-plot` — validator/plotting v4.1.0 | `plotcamillaconf`, `pycamilladsp-plot-python` | `numpy`, `python-matplotlib`, `rpds-py`, `libyaml`, `python@3.14`; resources: attrs, pyyaml, referencing, jsonschema-specifications, jsonschema | GPL-3.0-only | universal | Python virtualenv in `libexec` + symlinked script and launcher wrapper |
-| `camillagui` (cask) | `HEnquist/camillagui-backend` — GUI bundle 4.1.0 | `camillagui` | `:macos` | not declared (cask DSL has no license stanza) | arm64, x86_64 | cask binary bundle, `binary` linked as `camillagui` |
+| `camillagui` (formula) | `HEnquist/camillagui-backend` — GUI bundle 4.1.0 | `camillagui` | `:macos` | GPL-3.0-only | arm64, x86_64 | formula binary bundle, `bin.install` as `camillagui` |

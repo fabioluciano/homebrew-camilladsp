@@ -15,10 +15,9 @@ class CamilladspSuite < Formula
   #   - pycamilladsp-plot         (config validator + plotting)
   #
   # CamillaGUI is intentionally NOT a `depends_on` here: it is distributed
-  # as a Homebrew cask (`camillagui`) and must be installed separately via
-  # `brew install --cask fabioluciano/camilladsp/camillagui`. This split is
-  # upstream-driven (GUI ships its own bundled runtime) and is documented in
-  # the tap README.
+  # as a separate formula (install with `brew install camillagui`) and is not
+  # aggregated into this CLI-only suite. This split is upstream-driven (GUI
+  # ships its own bundled runtime) and is documented in the tap README.
   depends_on "camilladsp"
   depends_on "camilladsp-config"
   depends_on "camilladsp-controller"
@@ -31,16 +30,17 @@ class CamilladspSuite < Formula
     (share / "camilladsp-suite/README").write <<~EOS
       This meta-formula installs the CamillaDSP engine and all command-line,
       Python, configuration, controller, and setup-script packages in this tap.
-      CamillaGUI is distributed as a cask and must be installed separately.
+      CamillaGUI is distributed as a separate formula (not aggregated here)
+      and must be installed separately.
     EOS
   end
 
   def caveats
     <<~EOS
       Install the GUI bundle separately:
-        brew install --cask fabioluciano/camilladsp/camillagui
+        brew install camillagui
 
-      Or install every formula and cask using this tap's Brewfile:
+      Or install every formula using this tap's Brewfile:
         brew bundle --file="$(brew --repository fabioluciano/camilladsp)/Brewfile"
     EOS
   end
@@ -53,7 +53,7 @@ class CamilladspSuite < Formula
     assert_predicate readme, :file?
     refute_empty readme.read, "expected the suite README to be non-empty"
     assert_match(/command-line/i, readme.read)
-    assert_match(/cask/i, readme.read)
+    assert_match(/separate formula/i, readme.read)
 
     # Every CLI formula aggregated by this suite must be a registered Homebrew
     # Formula (catches a typo in `depends_on` and pins the CLI-only contract:
@@ -72,10 +72,10 @@ class CamilladspSuite < Formula
       assert_equal name, f.name, "expected dependent #{name} to be loadable by short name"
     end
 
-    # Failure contract: the suite must NOT include the cask in its
-    # dependency list (cask and formula are separate dispatch paths in
+    # Failure contract: the suite must NOT include the GUI in its
+    # dependency list (GUI and CLI are separate dispatch paths in
     # Homebrew; the suite is a CLI-only aggregator). This is the real
-    # CLI-only contract test — the meta-formula is wrong if a GUI/cask
+    # CLI-only contract test — the meta-formula is wrong if the GUI
     # ever leaks into `depends_on`. We assert this at the source-file
     # level so the test never depends on the formula library being
     # importable in a subshell.
