@@ -129,6 +129,7 @@ jobs:
         id: summary
         run: |
           set -euo pipefail
+          mkdir -p .ci-evidence
           {
             echo "### Auto-update diff"
             echo ""
