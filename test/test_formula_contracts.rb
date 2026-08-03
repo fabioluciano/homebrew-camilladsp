@@ -66,7 +66,7 @@ BINARY_CONTRACTS = {
   'camilladsp-controller' => [
     [['--help'], 0, '--port'],
     [[], 2, nil], # argparse: missing -p
-    [['-p', '1234'], 2, nil] # argparse: missing -s/-a
+    [['-p', '16440'], 2, nil] # argparse: missing -s/-a
   ],
   'pycamilladsp-python' => [
     [['-c', 'import camilladsp; raise SystemExit(0)'], 0, nil]

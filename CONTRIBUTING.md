@@ -80,6 +80,47 @@ The user invariant ("every new tag must build and publish a new tap release") is
 
 Review every generated URL and checksum before merging. Do not replace upstream component licenses or publish modified binaries under the tap's MIT license.
 
+## Services
+
+Three of the eight packages are wired as Homebrew services and respond to `brew services start|stop|restart|info`. The other five (`camilladsp-config`, `camilladsp-setupscripts`, `pycamilladsp`, `pycamilladsp-plot`, `camilladsp-suite`) are intentionally not services: data files, libraries, CLI validators, and the meta-formula aggregator do not run in the background.
+
+| Service | Formula/cask | Start | Status |
+|---|---|---|---|
+| `camilladsp` | `Formula/camilladsp.rb` (formula) | `brew services start fabioluciano/camilladsp/camilladsp` | ready in `83252fe` |
+| `camillagui` | `Casks/camillagui.rb` (cask) | `brew services start fabioluciano/camilladsp/camillagui` | ready in `9739443`* |
+| `camilladsp-controller` | `Formula/camilladsp-controller.rb` (formula) | `brew services start fabioluciano/camilladsp/camilladsp-controller` | ready in `9739443` |
+
+\* If you ran `brew install --cask fabioluciano/camilladsp/camillagui` **before** commit `9739443` was pushed, brew still tracks the old caskroom copy (no `service do` block). Run `brew reinstall fabioluciano/camilladsp/camillagui` so brew re-reads the cask with the new stanza; otherwise `brew services info` reports the service as unknown. `brew info --cask fabioluciano/camilladsp/camillagui` shows the installed commit under `==> Installed Versions`; cross-check against the tap HEAD before and after reinstall.
+
+### Wiring details
+- **`camilladsp`** — `run [opt_bin/"camilladsp", "-p", "16440", "-w", "-s", "#{var}/camilladsp/statefile.yml"]`, `keep_alive true`, `CAMILLADSP_PORT: 16440`. The default config (`pkgshare/config.yml`) and state file live under `#{var}/camilladsp/`. The wait flag (`-w`) means the engine starts **without a config file** and waits for one to arrive over the websocket at `ws://localhost:16440` — the upstream workflow uses this to push a freshly-validated config atomically before triggering playback.
+- **`camillagui`** — `run [opt_bin/"camillagui", "--port", "5005"]`, `keep_alive true`, `CAMILLAGUI_PORT: 5000` (the env defaults to 5000 in the backend; the explicit `--port 5005` on the run array overrides it to 5005 to match the URL in the caveats). Open `http://localhost:5005/gui/index.html` after start.
+- **`camilladsp-controller`** — `run [opt_bin/"camilladsp-controller", "-p", "16440", "-a", "#{var}/camilladsp-controller/config.yml"]`, `keep_alive true`, `CAMILLADSP_PORT: 16440`. **You must drop a controller YAML at `#{var}/camilladsp-controller/config.yml` before the first start** (the service fails fast if the file is missing). The `-a` path is exactly one fixed-config adapter; for samplerate-tokenized templates, swap to `-s "<template with {samplerate} placeholders>"` instead.
+
+### Useful commands
+```bash
+# start / stop / restart
+brew services start  fabioluciano/camilladsp/camilladsp
+brew services stop   fabioluciano/camilladsp/camillagui
+brew services restart fabioluciano/camilladsp/camilladsp-controller
+
+# inspect (shows service stanza + Run/Loaded/Schedulable flags)
+brew services info fabioluciano/camilladsp/camilladsp
+brew services info fabioluciano/camilladsp/camilladsp-controller
+brew services info homebrew.mxcl/camillagui        # casks use homebrew.mxcl prefix, not the tap prefix
+
+# list every service under the tap
+brew services list | grep ^homebrew.mxcl.camilladsp
+
+# tail logs in real-time
+tail -F $(brew --prefix)/var/log/camilladsp.log
+tail -F $(brew --prefix)/var/log/camillagui.log
+tail -F $(brew --prefix)/var/log/camilladsp-controller.log
+```
+
+### Why only three
+The five non-services either embed no daemon (`camilladsp-config` ships YAML data; `camilladsp-setupscripts` ships templates and a one-shot renderer) or are invoked explicitly per session (`pycamilladsp` library, `pycamilladsp-plot` CLI validator/plotter, `camilladsp-suite` aggregator). A user `brew services start pycamilladsp` would have no runnable daemon; the tap deliberately keeps the long-running surface to `camilladsp` (engine), `camillagui` (web UI), and `camilladsp-controller` (samplerate watcher).
+
 ## Maintenance: upstream contract references
 
 The contracts below were consulted as primary sources on **2026-08-01**, each pinned to an exact revision. Do not add contract claims to this tap without a consulted primary source recorded here.

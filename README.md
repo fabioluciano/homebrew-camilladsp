@@ -72,7 +72,7 @@ Start CamillaDSP with its WebSocket server and state file:
 
 ```bash
 mkdir -p ~/.config/camilladsp
-camilladsp -p 1234 -w -s ~/.config/camilladsp/statefile.yml
+camilladsp -p 16440 -w -s ~/.config/camilladsp/statefile.yml
 ```
 
 `-w` makes the engine wait for a configuration to be uploaded over WebSocket; `-s` persists the active config path and the five volume/mute faders. The statefile is not a device YAML — it is the state of the websocket session, not a configuration file.
@@ -105,7 +105,7 @@ plotcamillaconf /path/to/config.yml
 The controller runs manually (there is no `brew services` launchd agent for it). It monitors the active audio device and restarts CamillaDSP automatically when the source format changes.
 
 ```bash
-camilladsp-controller -p 1234 -s "$HOME/.config/camilladsp/configs/config_{samplerate}.yml"
+camilladsp-controller -p 16440 -s "$HOME/.config/camilladsp/configs/config_{samplerate}.yml"
 ```
 
 Required arguments:

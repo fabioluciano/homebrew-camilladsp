@@ -68,21 +68,21 @@ class Camilladsp < Formula
   end
 
   service do
-    run [opt_bin / "camilladsp", "-p", "1234", "-w", "-s", "#{var}/camilladsp/statefile.yml"]
+    run [opt_bin / "camilladsp", "-p", "16440", "-w", "-s", "#{var}/camilladsp/statefile.yml"]
     keep_alive true
     log_path var / "log/camilladsp.log"
     error_log_path var / "log/camilladsp.error.log"
     working_dir "#{var}/camilladsp"
-    environment_variables CAMILLADSP_PORT: "1234"
+    environment_variables CAMILLADSP_PORT: "16440"
   end
 
   def caveats
     <<~EOS
       The Homebrew-managed service runs from #{var}/camilladsp/ with:
-        camilladsp -p 1234 -w -s #{var}/camilladsp/statefile.yml
+        camilladsp -p 16440 -w -s #{var}/camilladsp/statefile.yml
 
       Service flags:
-        -p 1234   WebSocket server on port 1234 (localhost).
+        -p 16440  WebSocket server on port 16440 (localhost).
         -w        Wait mode: the engine starts WITHOUT a config file and
                   waits for one to be uploaded over WebSocket. The service
                   does NOT ship or load a device configuration at launch.
@@ -92,7 +92,7 @@ class Camilladsp < Formula
 
       To supply a device configuration:
         1. Start the service:  brew services start fabioluciano/camilladsp/camilladsp
-        2. Upload or edit a config over WebSocket via camillagui (port 1234),
+        2. Upload or edit a config over WebSocket via camillagui (port 16440),
            or run camilladsp manually with a config file argument.
 
       A default config template is installed at #{opt_pkgshare}/config.yml

@@ -58,15 +58,15 @@ class CamilladspController < Formula
 
   service do
     run [
-      opt_bin/"camilladsp-controller",
-      "-p", "1234",
+      opt_bin / "camilladsp-controller",
+      "-p", "16440",
       "-a", "#{var}/camilladsp-controller/config.yml"
     ]
     keep_alive true
-    log_path var/"log/camilladsp-controller.log"
-    error_log_path var/"log/camilladsp-controller.error.log"
+    log_path var / "log/camilladsp-controller.log"
+    error_log_path var / "log/camilladsp-controller.error.log"
     working_dir "#{var}/camilladsp-controller"
-    environment_variables CAMILLADSP_PORT: "1234"
+    environment_variables CAMILLADSP_PORT: "16440"
   end
 
   def caveats
@@ -76,7 +76,7 @@ class CamilladspController < Formula
         2. brew services start fabioluciano/camilladsp/camilladsp-controller
 
       Required flags (already wired by the service stanza):
-        -p 1234   WebSocket port (matches camilladsp -p 1234)
+        -p 16440  WebSocket port (matches camilladsp -p 16440)
         -a PATH   Single-config mode pointing at the above YAML
 
       The macOS CoreAudio listener uses a small CFFI binding built at install.
@@ -89,6 +89,6 @@ class CamilladspController < Formula
 
     shell_output("#{bin}/camilladsp-controller 2>&1", 2)
 
-    shell_output("#{bin}/camilladsp-controller -p 1234 2>&1", 2)
+    shell_output("#{bin}/camilladsp-controller -p 16440 2>&1", 2)
   end
 end

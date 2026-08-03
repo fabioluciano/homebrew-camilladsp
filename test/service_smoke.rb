@@ -37,7 +37,7 @@ DEFAULT_REPO_ROOT = Pathname(__FILE__).realpath.parent.parent
 EXPECTED_RUN = [
   'opt_bin/camilladsp',
   '-p',
-  '1234',
+  '16440',
   '-w',
   '-s',
   'var/camilladsp/statefile.yml'
