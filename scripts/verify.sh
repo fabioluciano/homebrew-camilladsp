@@ -52,6 +52,10 @@ grep -q 'cask "camillagui"' Casks/camillagui.rb
 grep -q 'class CamilladspSuite < Formula' Formula/camilladsp-suite.rb
 
 # ---------- 2. Homebrew style + audit ----------
+# Style is REQUIRED (Layout/HashAlignment etc. enforced). The formulae
+# and cask ship pre-formatted for EnforcedColonStyle: table — do not
+# rewrite tag/revision lines back to single-space colon-aligned; they
+# MUST stay in the multi-space-after-key form below.
 if command -v brew >/dev/null 2>&1; then
     echo
     echo '--- brew style ---'
