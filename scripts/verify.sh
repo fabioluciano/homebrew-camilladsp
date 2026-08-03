@@ -85,16 +85,7 @@ else
     skip_step "Homebrew is unavailable" required
 fi
 
-# ---------- 3. brew bundle check (Brewfile is canonical) ----------
-if command -v brew >/dev/null 2>&1; then
-    echo
-    echo '--- brew bundle check ---'
-    brew bundle check --file=Brewfile
-else
-    skip_step "Homebrew is unavailable for bundle check" required
-fi
-
-# ---------- 4. brew install for every formula + cask ----------
+# ---------- 3. brew install for every formula + cask ----------
 # Required: this proves the tap's formulae and cask actually resolve,
 # download, and install on a clean macOS runner. Failure here means the
 # tap is broken in a way that `brew test` could not catch.
@@ -108,6 +99,15 @@ if command -v brew >/dev/null 2>&1; then
     done
 else
     skip_step "Homebrew is unavailable for install" required
+fi
+
+# ---------- 4. brew bundle check (Brewfile is canonical) ----------
+if command -v brew >/dev/null 2>&1; then
+    echo
+    echo '--- brew bundle check ---'
+    brew bundle check --file=Brewfile
+else
+    skip_step "Homebrew is unavailable for bundle check" required
 fi
 
 # ---------- 5. brew test for every formula ----------
