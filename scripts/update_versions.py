@@ -385,7 +385,7 @@ def update_tagged_formula(
     text = replace_line_once(
         text,
         r"(?P<prefix>^(?:[ \t]*)|,[ \t]*)tag[ \t]*:[ \t]+(['\"])[^'\"]+\2",
-        rf"\g<1>tag{' ' * 6}: \g<2>{tag}\g<2>",
+        rf"\g<1>tag:      \g<2>{tag}\g<2>",
         f"{path}: tag",
     )
     text = replace_line_once(
@@ -487,7 +487,7 @@ def update_suite(root: Path, fetch: Fetcher, core_version: str) -> tuple[str, st
     text = replace_line_once(
         text,
         r"(?P<prefix>^(?:[ \t]*)|,[ \t]*)tag[ \t]*:[ \t]+(['\"])[^'\"]+\2",
-        rf"\g<1>tag{' ' * 6}: \g<2>{tag}\g<2>",
+        rf"\g<1>tag:      \g<2>{tag}\g<2>",
         f"{path}: tag",
     )
     text = replace_line_once(
