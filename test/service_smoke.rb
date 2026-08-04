@@ -26,21 +26,14 @@ require 'pathname'
 SCHEMA_VERSION = 1
 DEFAULT_REPO_ROOT = Pathname(__FILE__).realpath.parent.parent
 
-# Documented upstream contract: see CONTRIBUTING.md and
-# `.omo/notepads/camilladsp-homebrew-tap-audit/learnings.md` Todo 2.
-#
-# Engine `-p, --port` enables the websocket server (required when `-w`
-# is set so the GUI can connect). `-w, --wait` starts the server without
-# a config file (the GUI uploads one). `-s, --statefile` is the state
-# file (NOT a device YAML). The statefile is persisted in `var/` so it
-# survives package upgrades and is not world-readable.
+# Documented upstream contract: the engine takes a config file path as its
+# first positional argument and starts processing audio immediately. In
+# headless mode (no GUI, no websocket), the service runs with the user's
+# XDG config at ~/.config/camilladsp/config.yml — no -w (wait mode),
+# no -p (port), no -s (statefile).
 EXPECTED_RUN = [
   'opt_bin/camilladsp',
-  '-p',
-  '16440',
-  '-w',
-  '-s',
-  'var/camilladsp/statefile.yml'
+  'Pathname.new(Dir.home)/.config/camilladsp/config.yml'
 ].freeze
 EXPECTED_WORKING_DIR = 'var/camilladsp'
 EXPECTED_KEEP_ALIVE = true
@@ -78,6 +71,8 @@ class ServiceContractTest < Minitest::Test
       next if elem.empty?
 
       elem = elem.gsub(%r{\bopt_bin\s*/\s*["']([^"']+)["']}, 'opt_bin/\1')
+      elem = elem.gsub(%r{\betc\s*/\s*["']([^"']+)["']}, 'etc/\1')
+      elem = elem.gsub(%r{Pathname\.new\(Dir\.home\)\s*/\s*["']([^"']+)["']}, 'Pathname.new(Dir.home)/\1')
       elem = elem.gsub(%r{#{Regexp.escape('#{var}')}/([^"'\s]+)}, 'var/\1')
       elem = elem.tr(%q("'), '')
       normalized << elem

@@ -22,7 +22,7 @@ class Camilladsp < Formula
     (var / "camilladsp").mkpath
     bin.install "camilladsp"
 
-    # Install default configuration template
+    # Install default configuration template (example, not used by the service)
     (pkgshare / "config.yml").write <<~YAML
       ---
       # CamillaDSP default configuration for macOS
@@ -67,42 +67,21 @@ class Camilladsp < Formula
   end
 
   service do
-    run [opt_bin / "camilladsp", "-p", "16440", "-w", "-s", "#{var}/camilladsp/statefile.yml"]
+    run [opt_bin / "camilladsp", Pathname.new(Dir.home) / ".config/camilladsp/config.yml"]
     keep_alive true
     log_path var / "log/camilladsp.log"
     error_log_path var / "log/camilladsp.error.log"
     working_dir "#{var}/camilladsp"
-    environment_variables CAMILLADSP_PORT: "16440"
   end
 
   def caveats
     <<~EOS
-      The Homebrew-managed service runs from #{var}/camilladsp/ with:
-        camilladsp -p 16440 -w -s #{var}/camilladsp/statefile.yml
+      camilladsp runs headless, reading its config from:
+        ~/.config/camilladsp/config.yml
+      Edit that file to change devices, filters, or pipeline. Then restart:
+        brew services restart fabriluciano/camilladsp/camilladsp
 
-      Service flags:
-        -p 16440  WebSocket server on port 16440 (localhost).
-        -w        Wait mode: the engine starts WITHOUT a config file and
-                  waits for one to be uploaded over WebSocket. The service
-                  does NOT ship or load a device configuration at launch.
-        -s <path> Statefile: persists ONLY the active config_path and the
-                  five volume/mute faders (Main + Aux1-Aux4). It is NOT a
-                  device YAML and must not be edited as one.
-
-      To supply a device configuration:
-        1. Start the service:  brew services start fabioluciano/camilladsp/camilladsp
-        2. Upload or edit a config over WebSocket via camillagui (port 16440),
-           or run camilladsp manually with a config file argument.
-
-      A default config template is installed at #{opt_pkgshare}/config.yml
-      for manual runs:
-        mkdir -p ~/.config/camilladsp
-        cp #{opt_pkgshare}/config.yml ~/.config/camilladsp/config.yml
-
-      Exemplary CoreAudio device setup:
-        - Capture:  "BlackHole 2ch" (or any virtual loopback / physical input)
-        - Playback: "MacBook Pro Speakers" (or your output device)
-        Valid CoreAudio format values: S16, S24, S32, F32.
+      Logs: #{var}/log/camilladsp.log
 
       macOS microphone permission:
         On first capture, macOS prompts for microphone access. If denied,
