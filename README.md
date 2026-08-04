@@ -142,7 +142,7 @@ The updater is a transactional, allow-listed Python script that reads the offici
 python3 scripts/update_versions.py  # transactional; uses --fetcher-fixture in CI
 ```
 
-The `Update packages` GitHub Actions workflow runs the updater, validates the result with `bash scripts/verify.sh` and `brew audit --strict` on every formula, and opens a single pull request only when the updater produced a non-empty diff AND the validation passed. See `CONTRIBUTING.md` § "Automated updates" for the full ordering, the diff→validation→PR gating, and the SHA-pinned action versions.
+The `Update packages` GitHub Actions workflow runs the updater, validates the result with `bash scripts/verify.sh` and `brew audit --strict` on every formula, and commits directly to main only when the updater produced a non-empty diff AND the validation passed. See `CONTRIBUTING.md` § "Automated updates" for the full ordering, the diff→validation→commit gating, and the SHA-pinned action versions.
 
 ## Local validation
 

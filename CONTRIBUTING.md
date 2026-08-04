@@ -53,27 +53,26 @@ For local testing and CI, the updater accepts `--fixture <dir>` which swaps the 
 
 ## Automated updates
 
-The user invariant ("every new tag must build and publish a new tap release") is enforced in CI by `.github/workflows/update.yml`. The workflow's source of truth is here, in this section, so the linkage between the user invariant and the pipeline stays in one place.
+The user invariant ("every new tag must build and publish a new tap release") is enforced in CI by `.github/workflows/tap-update.yml`. The workflow's source of truth is here, in this section, so the linkage between the user invariant and the pipeline stays in one place.
 
 - **Triggers.** The workflow runs on three triggers, in priority order:
   1. `repository_dispatch: types: [upstream-release]` — fired by the upstream `HEnquist/*` repos (CamillaDSP, CamillaGUI, pycamilladsp, pycamilladsp-plot, camilladsp-setupscripts) on each new release tag. This is the user-invariant path: a new tag lands within minutes of upstream tagging.
   2. `workflow_dispatch` — manual reconciliation by a maintainer.
   3. `schedule: 0 6 * * *` (06:00 UTC daily) — reconciliation safety net that catches any missed `repository_dispatch` event.
 
-  The workflow is intentionally not bound to `push` or `pull_request` so a contributor push never auto-opens a release PR.
+  The workflow is intentionally not bound to `push` or `pull_request` so a contributor push never triggers an automated commit to main.
 - **Order.** The job is strictly ordered to fail fast and avoid partial state:
   1. `actions/checkout` (full history, `fetch-depth: 0`) so `git diff` has a real baseline.
   2. `Homebrew/actions/setup-homebrew` to install Homebrew on the macOS-15 runner.
   3. Run the transactional updater against the live GitHub Releases + PyPI APIs: `python3 scripts/update_versions.py` with `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` forwarded explicitly. The fixture under `test/fixtures/update_versions/` is for the local mirror (`test/run_update_workflow_fixture.rb`) only; CI never points the updater at it.
-  4. `git diff --quiet` → emit `has_diff=true|false`. **A no-op run MUST NOT open a PR.**
-  5. If `has_diff == 'true'`, run `bash scripts/verify.sh` plus `brew audit --strict` on every formula. Validation failure aborts the workflow before any PR is opened.
-  6. If validation passed, write the diff summary to `.ci-evidence/update-pr-body.md` and open a single PR via `peter-evans/create-pull-request`.
-- **Concurrency.** A single `concurrency: group: ${{ github.workflow }}-${{ github.ref }}` prevents the daily cron and a manual dispatch (or two `repository_dispatch` events fired back-to-back) from racing and producing duplicate PRs. `cancel-in-progress: false` keeps a slow in-flight update from being cut off mid-run by a fresher one.
-- **PR token.** `peter-evans/create-pull-request` is invoked with an explicit `token: ${{ secrets.UPDATE_PR_TOKEN || secrets.GITHUB_TOKEN }}`. `UPDATE_PR_TOKEN` is the preferred path — a GitHub App installation token or a PAT — because the default `GITHUB_TOKEN` does NOT trigger downstream `on: pull_request` workflows on the auto-PR branch (per GitHub Actions policy). For tap repos that require `audit.yml` to gate the auto-PR, configure `UPDATE_PR_TOKEN` and rotate it via the installation's expiry; the fallback to `GITHUB_TOKEN` keeps the PR creation working but skips automatic audit on the PR.
-- **PR gating.** A PR is opened only when (a) the updater produced a non-empty `git diff` AND (b) `scripts/verify.sh` + `brew audit --strict` both succeeded. No-diff runs exit cleanly; validation-failure runs never reach the PR step.
-- **Permissions.** The workflow declares `permissions: contents: write, pull-requests: write` (different from `.github/workflows/audit.yml`, which is `contents: read`). No other workflow in this tap has write permissions.
-- **Action pins.** `actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a`, `Homebrew/actions/setup-homebrew@850067efd47cb5801a4c1d71c2297c860b522f3b`, and `peter-evans/create-pull-request@7ec5aae3c91d101b005af46adc760d265911886a` are SHA-pinned. Bumping them is a deliberate change and must be reviewed alongside any GitHub Actions surface that depends on them.
-- **Local mirror.** `test/run_update_workflow_fixture.rb` is the local black-box mirror of this workflow: it copies `test/fixtures/update_versions/{happy,up-to-date}/` to a tempdir, runs the same `python3 scripts/update_versions.py --fixture <tmpdir>` subprocess, and asserts the same `diff → validation → PR` gating that the YAML encodes. `test/test_update_versions.rb` is the black-box coverage of the updater itself (transactional, scope, idempotency, no-network).
+  4. `git diff --quiet` → emit `has_diff=true|false`. **A no-op run MUST NOT commit.**
+  5. If `has_diff == 'true'`, run `bash scripts/verify.sh` plus `brew audit --strict` on every formula. Validation failure aborts the workflow before any commit lands on main.
+  6. If validation passed, commit and push directly to main (only on diff AND validation success).
+- **Concurrency.** A single `concurrency: group: ${{ github.workflow }}-${{ github.ref }}` prevents the daily cron and a manual dispatch (or two `repository_dispatch` events fired back-to-back) from racing. `cancel-in-progress: false` keeps a slow in-flight update from being cut off mid-run by a fresher one. The concurrency group also guarantees no concurrent pushes, so `git push origin main` is safe without `--force`.
+- **Commit gating.** A commit lands on main only when (a) the updater produced a non-empty `git diff` AND (b) `scripts/verify.sh` + `brew audit --strict` both succeeded. No-diff runs exit cleanly; validation-failure runs never reach the commit step.
+- **Permissions.** The workflow declares `permissions: contents: write` (required for `git push` to main). No `pull-requests: write` is needed — this workflow commits directly; no PR is opened.
+- **Action pins.** `actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a` and `Homebrew/actions/setup-homebrew@850067efd47cb5801a4c1d71c2297c860b522f3b` are SHA-pinned. Bumping them is a deliberate change and must be reviewed alongside any GitHub Actions surface that depends on them.
+- **Local mirror.** `test/run_update_workflow_fixture.rb` is the local black-box mirror of this workflow: it copies `test/fixtures/update_versions/{happy,up-to-date}/` to a tempdir, runs the same `python3 scripts/update_versions.py --fixture <tmpdir>` subprocess, and asserts the same `diff → validation → commit` gating that the YAML encodes. `test/test_update_versions.rb` is the black-box coverage of the updater itself (transactional, scope, idempotency, no-network).
 
 Review every generated URL and checksum before merging. Do not replace upstream component licenses or publish modified binaries under the tap's MIT license.
 

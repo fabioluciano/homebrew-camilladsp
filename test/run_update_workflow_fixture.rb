@@ -1,11 +1,11 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Black-box mirror of `.github/workflows/update.yml` (Todo 8).
+# Black-box mirror of `.github/workflows/tap-update.yml`.
 #
 # User invariant (2026-08-01): "Toda vez que tiver uma nova tag, [o tap]
 # tem que buildar [e] disponibilizar para as pessoas uma nova versão."
-# `.github/workflows/update.yml` is the trigger; this test asserts the
+# `.github/workflows/tap-update.yml` is the trigger; this test asserts the
 # same gating locally without ever calling the GitHub API. The fixture
 # under `test/fixtures/update_versions/{happy,up-to-date}/` provides
 # canned `api-mocks/responses.json` so the Python updater reads from
@@ -16,9 +16,9 @@
 #   2. diff check — the updater's byte-level change is the fixture-
 #      level mirror of `git diff --quiet`
 #   3. validation — `bash scripts/verify.sh` (REQUIRED; aborts the test
-#      on failure so we never open a PR after a broken build)
-#   4. PR only after diff AND validation — mocked here by writing the
-#      PR body to `.omo/evidence/camilladsp-homebrew-tap-audit/mocked-pr-*.md`
+#      on failure so we never commit after a broken build)
+#   4. commit only after diff AND validation — mocked here by writing
+#      the commit summary to `.omo/evidence/camilladsp-homebrew-tap-audit/mocked-commit-*.md`
 #
 # Stdlib only: minitest, json, optparse, fileutils, open3, pathname,
 # tmpdir, digest, socket. No Gemfile, no external gems.
@@ -52,27 +52,27 @@ EXPECTED_UPDATED_FILES = %w[
 
 class RunUpdateWorkflowFixtureTest < Minitest::Test
   class << self
-    attr_accessor :fixture_name, :skip_real_github, :mock_pr,
-                  :assert_pr_after_validation, :assert_no_pr,
+    attr_accessor :fixture_name, :skip_real_github, :mock_commit,
+                  :assert_commit_after_validation, :assert_no_commit,
                   :force_validation_failure
   end
 
   def setup
     @fixture_name = self.class.fixture_name || 'happy'
     @skip_real_github = self.class.skip_real_github
-    @mock_pr = self.class.mock_pr
-    @assert_pr_after_validation = self.class.assert_pr_after_validation
-    @assert_no_pr = self.class.assert_no_pr
+    @mock_commit = self.class.mock_commit
+    @assert_commit_after_validation = self.class.assert_commit_after_validation
+    @assert_no_commit = self.class.assert_no_commit
     @force_validation_failure = self.class.force_validation_failure
     @ran_validation = false
-    @ran_pr = false
+    @ran_commit = false
     @validation_failed = false
-    # Wipe any leftover mocked PR body from a previous test so that
-    # negative assertions ("no PR was opened") are not fooled by
+    # Wipe any leftover mocked commit body from a previous test so that
+    # negative assertions ("no commit was made") are not fooled by
     # earlier-pass leftovers.
     return unless EVIDENCE_DIR.directory?
 
-    Dir.glob(EVIDENCE_DIR / 'mocked-pr-*.md').each { |f| File.unlink(f) }
+    Dir.glob(EVIDENCE_DIR / 'mocked-commit-*.md').each { |f| File.unlink(f) }
   end
 
   def with_fixture(name)
@@ -105,7 +105,7 @@ class RunUpdateWorkflowFixtureTest < Minitest::Test
   # "the wiring is right" but "the wiring is right AND the upstream
   # verify.sh would have passed". A forced-failure mode short-circuits
   # this to a synthetic false return so the gating-against-failure
-  # tests can exercise the PR-blocked path without making the
+  # tests can exercise the commit-blocked path without making the
   # underlying tap actually fail.
   def perform_validation(has_diff)
     return false unless has_diff
@@ -129,36 +129,33 @@ class RunUpdateWorkflowFixtureTest < Minitest::Test
 
   # Mirrors the workflow's `if: steps.diff.outputs.has_diff == 'true'`
   # AND the implicit "validation passed" gating (the YAML `Validate`
-  # step runs before the PR step with no `if: always()`). PR is only
-  # created when (a) there is a diff, (b) validation passed, and (c)
-  # the test runner asked for `--mock-pr`.
-  def perform_pr(root, fixture_name, has_diff)
+  # step runs before the commit step with no `if: always()`). Commit
+  # only happens when (a) there is a diff, (b) validation passed, and
+  # (c) the test runner asked for `--mock-commit`.
+  def perform_commit(_root, fixture_name, has_diff)
     return unless has_diff
     return if @validation_failed
 
-    @ran_pr = true
-    return unless @mock_pr
+    @ran_commit = true
+    return unless @mock_commit
 
     EVIDENCE_DIR.mkpath
-    body = root / 'api-mocks' / 'responses.json'
     summary = {
       schema_version: 1,
       mocked: true,
       fixture: fixture_name,
       has_diff: true,
       validation_passed: !@validation_failed,
-      pr_title: 'Automated package updates',
-      pr_branch: 'automations/package-updates-test',
-      body_excerpt: body.exist? ? body.read[0, 200] : nil
+      commit_message: 'chore(tap): automated package updates'
     }
-    out = EVIDENCE_DIR / "mocked-pr-#{fixture_name}.md"
+    out = EVIDENCE_DIR / "mocked-commit-#{fixture_name}.md"
     out.write(JSON.pretty_generate(summary) + "\n")
   end
 
   # ------------------------------------------------------------------
-  # Test 1: happy path opens PR after validation
+  # Test 1: happy path commits after validation
   # ------------------------------------------------------------------
-  def test_happy_path_opens_pr_after_validation
+  def test_happy_path_commits_after_validation
     fixture = 'happy'
     with_fixture(fixture) do |root|
       before = snapshot(root)
@@ -176,25 +173,25 @@ class RunUpdateWorkflowFixtureTest < Minitest::Test
 
       # Validation gate (mirrors `bash scripts/verify.sh`).
       validation_ok = perform_validation(has_diff)
-      assert validation_ok, 'validation must pass before PR (workflow contract)'
+      assert validation_ok, 'validation must pass before commit (workflow contract)'
 
-      # PR step.
-      perform_pr(root, fixture, has_diff)
-      assert @ran_pr, 'PR step must run when diff + validation both succeed'
+      # Commit step.
+      perform_commit(root, fixture, has_diff)
+      assert @ran_commit, 'commit step must run when diff + validation both succeed'
 
-      pr_body = EVIDENCE_DIR / "mocked-pr-#{fixture}.md"
-      if @assert_pr_after_validation
-        assert pr_body.exist?, "expected mocked PR body at #{pr_body}"
-        summary = JSON.parse(pr_body.read)
-        assert_equal 'Automated package updates', summary['pr_title']
+      commit_body = EVIDENCE_DIR / "mocked-commit-#{fixture}.md"
+      if @assert_commit_after_validation
+        assert commit_body.exist?, "expected mocked commit body at #{commit_body}"
+        summary = JSON.parse(commit_body.read)
+        assert_equal 'chore(tap): automated package updates', summary['commit_message']
       end
     end
   end
 
   # ------------------------------------------------------------------
-  # Test 2: no-diff path opens no PR
+  # Test 2: no-diff path makes no commit
   # ------------------------------------------------------------------
-  def test_no_diff_path_opens_no_pr
+  def test_no_diff_path_makes_no_commit
     fixture = 'up-to-date'
     with_fixture(fixture) do |root|
       before = snapshot(root)
@@ -209,28 +206,28 @@ class RunUpdateWorkflowFixtureTest < Minitest::Test
       refute has_diff, 'no-diff fixture must produce zero byte-level change'
 
       # Mirrors the workflow's `if: steps.diff.outputs.has_diff == 'true'`
-      # gate: when the diff is empty, neither validation nor the PR step
-      # is allowed to run.
+      # gate: when the diff is empty, neither validation nor the commit
+      # step is allowed to run.
       validation_ok = perform_validation(has_diff)
       refute validation_ok,
              'validation MUST NOT run when no diff is present (workflow contract)'
       refute @ran_validation,
              'validation flag MUST NOT be set when no diff is present'
 
-      # The PR step is the same: skipped.
-      perform_pr(root, fixture, has_diff)
-      refute @ran_pr, 'PR MUST NOT be created when no diff is present'
-      if @assert_no_pr
-        refute (EVIDENCE_DIR / "mocked-pr-#{fixture}.md").exist?,
-               'no PR body should be written for the no-diff path'
+      # The commit step is the same: skipped.
+      perform_commit(root, fixture, has_diff)
+      refute @ran_commit, 'commit MUST NOT be made when no diff is present'
+      if @assert_no_commit
+        refute (EVIDENCE_DIR / "mocked-commit-#{fixture}.md").exist?,
+               'no commit body should be written for the no-diff path'
       end
     end
   end
 
   # ------------------------------------------------------------------
-  # Test 3: PR only AFTER validation passes
+  # Test 3: commit only AFTER validation passes
   # ------------------------------------------------------------------
-  def test_pr_only_after_validation
+  def test_commit_only_after_validation
     @force_validation_failure = true
     fixture = 'happy'
     with_fixture(fixture) do |root|
@@ -245,9 +242,9 @@ class RunUpdateWorkflowFixtureTest < Minitest::Test
       validation_ok = perform_validation(has_diff)
       refute validation_ok, 'expected synthetic validation failure'
 
-      # PR step is intentionally NOT invoked when validation failed.
-      perform_pr(root, fixture, has_diff)
-      refute @ran_pr, 'PR MUST NOT run when validation failed (workflow contract)'
+      # Commit step is intentionally NOT invoked when validation failed.
+      perform_commit(root, fixture, has_diff)
+      refute @ran_commit, 'commit MUST NOT run when validation failed (workflow contract)'
     end
   end
 
@@ -287,16 +284,16 @@ class RunUpdateWorkflowFixtureTest < Minitest::Test
   end
 
   # ------------------------------------------------------------------
-  # Test 5: failure path → no PR
+  # Test 5: failure path → no commit
   # ------------------------------------------------------------------
-  def test_failure_no_pr
+  def test_failure_no_commit
     fixture = 'happy'
     with_fixture(fixture) do |_root|
       # Point the updater at a non-existent fixture directory:
       # MockFetcher must refuse to fall back, so the run aborts with
       # a non-zero exit. This is the same shape as a real CI failure
       # (network error, missing tag, malformed JSON), so the workflow
-      # contract "no PR on failure" applies identically.
+      # contract "no commit on failure" applies identically.
       stdout, stderr, status = run_updater('/nonexistent-fixture-dir')
       refute status.success?,
              "updater must fail when its fixture directory is missing: stdout=#{stdout}\nstderr=#{stderr}"
@@ -307,11 +304,11 @@ class RunUpdateWorkflowFixtureTest < Minitest::Test
       refute validation_ok,
              'validation MUST NOT run after a failed updater'
 
-      # PR must NOT run on failure.
-      perform_pr(nil, fixture, false)
-      refute @ran_pr, 'PR MUST NOT run after a failed updater'
-      pr_body = EVIDENCE_DIR / "mocked-pr-#{fixture}.md"
-      refute pr_body.exist?, 'no PR body should be written on failure'
+      # Commit must NOT run on failure.
+      perform_commit(nil, fixture, false)
+      refute @ran_commit, 'commit MUST NOT run after a failed updater'
+      commit_body = EVIDENCE_DIR / "mocked-commit-#{fixture}.md"
+      refute commit_body.exist?, 'no commit body should be written on failure'
     end
   end
 end
@@ -320,9 +317,9 @@ def parse_options(argv)
   options = {
     fixture: 'happy',
     skip_real_github: false,
-    mock_pr: false,
-    assert_pr_after_validation: false,
-    assert_no_pr: false
+    mock_commit: false,
+    assert_commit_after_validation: false,
+    assert_no_commit: false
   }
   OptionParser.new do |opts|
     opts.banner = 'Usage: run_update_workflow_fixture.rb [options]'
@@ -330,12 +327,12 @@ def parse_options(argv)
       options[:fixture] = v
     end
     opts.on('--skip-real-github', 'never call GitHub API (test mode)') { options[:skip_real_github] = true }
-    opts.on('--mock-pr', 'write mocked PR body instead of invoking peter-evans') { options[:mock_pr] = true }
-    opts.on('--assert-pr-after-validation', 'assert PR body was written after validation') do
-      options[:assert_pr_after_validation] = true
+    opts.on('--mock-commit', 'write mocked commit body instead of pushing to main') { options[:mock_commit] = true }
+    opts.on('--assert-commit-after-validation', 'assert commit body was written after validation') do
+      options[:assert_commit_after_validation] = true
     end
-    opts.on('--assert-no-pr', 'assert no PR body was written (no-diff path)') do
-      options[:assert_no_pr] = true
+    opts.on('--assert-no-commit', 'assert no commit body was written (no-diff path)') do
+      options[:assert_no_commit] = true
     end
     opts.on('-h', '--help', 'show this help') do
       puts opts
@@ -349,9 +346,9 @@ def main(argv)
   options = parse_options(argv)
   RunUpdateWorkflowFixtureTest.fixture_name = options[:fixture]
   RunUpdateWorkflowFixtureTest.skip_real_github = options[:skip_real_github]
-  RunUpdateWorkflowFixtureTest.mock_pr = options[:mock_pr]
-  RunUpdateWorkflowFixtureTest.assert_pr_after_validation = options[:assert_pr_after_validation]
-  RunUpdateWorkflowFixtureTest.assert_no_pr = options[:assert_no_pr]
+  RunUpdateWorkflowFixtureTest.mock_commit = options[:mock_commit]
+  RunUpdateWorkflowFixtureTest.assert_commit_after_validation = options[:assert_commit_after_validation]
+  RunUpdateWorkflowFixtureTest.assert_no_commit = options[:assert_no_commit]
   0
 end
 

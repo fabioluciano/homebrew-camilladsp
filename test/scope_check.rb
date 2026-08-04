@@ -5,18 +5,19 @@
 #
 # Enforces the plan's anti-slop guardrails so a future contributor cannot
 # silently weaken the contracts this tap has committed to. Every check
-# here is reversible by editing this file (which then requires a PR and
+# here is reversible by editing this file (which then requires a review and
 # an updated `--baseline-file`); they are NOT defaults that can be
 # disabled at the CI level.
 #
 # User invariant (2026-08-01): "Toda vez que tiver uma nova tag, [o tap]
 # tem que buildar [e] disponibilizar para as pessoas uma nova versão."
-# This invariant is enforced upstream by the CI workflows `audit.yml`
-# (runs `brew style` + `brew install` + `brew test` on every push/PR)
-# and `update.yml` (opens the update PR after `scripts/update_versions.py`
-# pins real arch-specific SHA-256 values). The contract tests in this
-# directory are the local safety net that mirrors what CI enforces, so
-# the same invariant holds in a developer laptop or pre-commit hook.
+# This invariant is enforced upstream by the CI workflows
+# `tap-validate.yml` (runs `brew style` + `brew install` + `brew test`
+# on every push/PR) and `tap-update.yml` (commits directly to main
+# after `scripts/update_versions.py` pins real arch-specific SHA-256
+# values). The contract tests in this directory are the local safety
+# net that mirrors what CI enforces, so the same invariant holds in a
+# developer laptop or pre-commit hook.
 #
 # Checks:
 #   1. The GUI formula must NOT use `sha256 :no_check` (real arch-specific

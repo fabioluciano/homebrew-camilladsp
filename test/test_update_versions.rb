@@ -4,10 +4,11 @@
 # Todo 6 black-box coverage for the transactional updater.
 #
 # The user invariant ("every new tag must build and publish a new version") is
-# enforced in CI by .github/workflows/update.yml (which runs this updater before
-# opening its PR) and .github/workflows/audit.yml (which builds and tests every
-# formula). These tests are the local mirror of that pipeline: they exercise the
-# same updater boundary without importing Python or calling GitHub.
+# enforced in CI by .github/workflows/tap-update.yml (which runs this updater
+# before committing to main) and .github/workflows/tap-validate.yml (which
+# builds and tests every formula). These tests are the local mirror of that
+# pipeline: they exercise the same updater boundary without importing Python
+# or calling GitHub.
 #
 # The updater is driven as a black box through Open3.capture3("python3",
 # "scripts/update_versions.py", "--fixture", <tmpdir>, ...) so this file has no
