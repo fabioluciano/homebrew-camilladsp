@@ -22,14 +22,54 @@ class Camillagui < Formula
     libexec.install "_internal"
     libexec.install "camillagui_backend"
     bin.install_symlink libexec / "camillagui_backend" => "camillagui"
+
+    # Override the embedded default config: camilla_port must be 16440
+    # (not 1234) to match the camilladsp service, and the ~/camilladsp/
+    # paths do not exist on a fresh install.
+    (etc / "camillagui.yml").write <<~YAML
+      ---
+      camilla_host: "127.0.0.1"
+      camilla_port: 16440
+      bind_address: "127.0.0.1"
+      port: 5005
+      ssl_certificate: null
+      ssl_private_key: null
+      gui_config_file: null
+      config_dir: "#{HOMEBREW_PREFIX}/var/camillagui/configs"
+      coeff_dir: "#{HOMEBREW_PREFIX}/var/camillagui/coeffs"
+      default_config: "#{HOMEBREW_PREFIX}/var/camillagui/default_config.yml"
+      statefile_path: "#{HOMEBREW_PREFIX}/var/camillagui/statefile.yml"
+      log_file: "#{HOMEBREW_PREFIX}/var/log/camilladsp.log"
+      on_set_active_config: null
+      on_get_active_config: null
+      supported_capture_types: null
+      supported_playback_types: null
+    YAML
+
+    (var / "camillagui/configs").mkpath
+    (var / "camillagui/coeffs").mkpath
+
+    (var / "camillagui/default_config.yml").write <<~YAML
+      ---
+      devices:
+        samplerate: 44100
+        chunksize: 1024
+        silence_threshold: -60
+        silence_timeout: 3.0
+        capture:
+          type: CoreAudio
+          channels: 2
+        playback:
+          type: CoreAudio
+          channels: 2
+    YAML
   end
 
   service do
-    run [opt_bin / "camillagui", "--port", "5005"]
+    run [opt_bin / "camillagui", "-c", etc / "camillagui.yml"]
     keep_alive true
     log_path var / "log/camillagui.log"
     error_log_path var / "log/camillagui.error.log"
-    environment_variables CAMILLAGUI_PORT: "5005"
   end
 
   def caveats
@@ -37,6 +77,11 @@ class Camillagui < Formula
       camillagui is now a Homebrew service. Run it with:
         brew services start fabioluciano/camilladsp/camillagui
       Then open: http://localhost:5005/gui/index.html
+
+      Configs are stored in #{HOMEBREW_PREFIX}/var/camillagui/configs/.
+      The backend connects to camilladsp on port 16440 (matching the
+      camilladsp formula service). Override the backend config at
+      #{HOMEBREW_PREFIX}/etc/camillagui.yml.
 
       Logs: #{var}/log/camillagui.log
       To uninstall, run `brew services stop fabioluciano/camilladsp/camillagui && brew uninstall camillagui`.
