@@ -22,47 +22,104 @@ class Camilladsp < Formula
     (var / "camilladsp").mkpath
     bin.install "camilladsp"
 
-    # Install default configuration template (example, not used by the service)
-    (pkgshare / "config.yml").write <<~YAML
+    # Helper: list available CoreAudio devices for use in config.yml
+    (bin / "camilladsp-devices").write <<~SH
+      #!/bin/bash
+      # List audio devices available for CamillaDSP configuration.
+      # Usage: camilladsp-devices
+      echo "Audio devices (use the exact name in config.yml device: field):"
+      echo ""
+      printf "%-35s %-10s %-8s %-8s %s\\n" "DEVICE NAME" "TYPE" "INPUT" "OUTPUT" "DEFAULT"
+      printf "%-35s %-10s %-8s %-8s %s\\n" "-----------" "----" "-----" "------" "-------"
+      system_profiler SPAudioDataType 2>/dev/null | awk '
+        /^        [A-Z]/ {
+          if (name != "") print_line()
+          name=$0; gsub(/^        /, "", name); gsub(/:$/, "", name)
+          transport=""; in_ch="-"; out_ch="-"; flags=""
+        }
+        /Transport:/ { transport=$NF }
+        /Input Channels:/ { in_ch=$NF }
+        /Output Channels:/ { out_ch=$NF }
+        /Default Input Device: Yes/ { flags=flags "in " }
+        /Default Output Device: Yes/ { flags=flags "out " }
+        END { if (name != "") print_line() }
+        function print_line() {
+          printf "%-35s %-10s %-8s %-8s %s\\n", name, transport, in_ch, out_ch, flags
+        }
+      '
+      echo ""
+      echo "Example config.yml capture/playback:"
+      echo '  capture:'
+      echo '    type: CoreAudio'
+      echo '    channels: 1'
+      echo '    device: "MacBook Pro Microphone"'
+      echo '  playback:'
+      echo '    type: CoreAudio'
+      echo '    channels: 1'
+      echo '    device: "BlackHole 2ch"'
+    SH
+    chmod 0755, bin / "camilladsp-devices"
+
+    # Example configuration template (copy to ~/.config/camilladsp/config.yml)
+    (pkgshare / "config.example.yml").write <<~YAML
       ---
-      # CamillaDSP default configuration for macOS
-      # See: https://github.com/HEnquist/camilladsp/blob/main/README.md
+      # CamillaDSP example config — microphone processing for macOS.
+      # Copy to ~/.config/camilladsp/config.yml and edit devices/filters.
+      # List available devices: camilladsp-devices
 
       devices:
-        samplerate: 44100
+        samplerate: 48000
         chunksize: 1024
-        silence_threshold: -60
+        target_level: 512
+        silence_threshold: -90
         silence_timeout: 3.0
+        enable_rate_adjust: true
         capture:
           type: CoreAudio
-          channels: 2
-          device: "BlackHole 2ch"
-          format: S32
+          channels: 1
+          device: "MacBook Pro Microphone"
         playback:
           type: CoreAudio
-          channels: 2
-          device: "MacBook Pro Speakers"
-          format: S32
+          channels: 1
+          device: "BlackHole 2ch"
 
-      # Uncomment and configure filters as needed
-      # filters:
-      #   highpass:
-      #     type: Biquad
-      #     parameters:
-      #       type: Highpass
-      #       freq: 80
-      #       q: 0.7
+      filters:
+        highpass:
+          type: Biquad
+          parameters: {type: Highpass, freq: 100, q: 0.707}
+        warmth:
+          type: Biquad
+          parameters: {type: Lowshelf, freq: 150, gain: 3, q: 0.7}
+        box_cut:
+          type: Biquad
+          parameters: {type: Peaking, freq: 250, gain: -5, q: 1.0}
+        presence:
+          type: Biquad
+          parameters: {type: Peaking, freq: 3000, gain: 5, q: 0.8}
+        air:
+          type: Biquad
+          parameters: {type: Highshelf, freq: 10000, gain: 4, q: 0.7}
+        limiter:
+          type: Limiter
+          parameters: {clip_limit: -1}
 
-      # Uncomment and configure pipeline as needed
-      # pipeline:
-      #   - type: Filter
-      #     channel: 0
-      #     names:
-      #       - highpass
-      #   - type: Filter
-      #     channel: 1
-      #     names:
-      #       - highpass
+      processors:
+        compressor:
+          type: Compressor
+          parameters: {channels: 1, threshold: -20, attack: 15, release: 100, factor: 4, makeup_gain: 4}
+        gate:
+          type: NoiseGate
+          parameters: {channels: 1, threshold: -38, attack: 2, release: 100, attenuation: 40}
+
+      pipeline:
+        - type: Filter
+          names: [highpass, warmth, box_cut, presence, air]
+        - type: Processor
+          name: compressor
+        - type: Processor
+          name: gate
+        - type: Filter
+          names: [limiter]
     YAML
   end
 
@@ -76,10 +133,17 @@ class Camilladsp < Formula
 
   def caveats
     <<~EOS
-      camilladsp runs headless, reading its config from:
-        ~/.config/camilladsp/config.yml
-      Edit that file to change devices, filters, or pipeline. Then restart:
-        brew services restart fabriluciano/camilladsp/camilladsp
+      Quick start:
+        1. List available audio devices:
+             camilladsp-devices
+        2. Copy the example config:
+             mkdir -p ~/.config/camilladsp
+             cp #{opt_pkgshare}/config.example.yml ~/.config/camilladsp/config.yml
+        3. Edit the config to match your devices:
+             nano ~/.config/camilladsp/config.yml
+        4. Start the service:
+             brew services start fabioluciano/camilladsp/camilladsp
+        5. In your app (Zoom, OBS, etc.), select "BlackHole 2ch" as microphone.
 
       Logs: #{var}/log/camilladsp.log
 
